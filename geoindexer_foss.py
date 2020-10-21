@@ -1,5 +1,6 @@
 import fiona
 import gdal
+from lidar_handler import LidarQ
 import os
 from pathlib import Path
 from pyproj import CRS

@@ -40,7 +40,7 @@ class LidarQ:
                       'path': 'str'
                   }}
 
-        stats = LidarQ.run_pdal(self.lidar_files)  # generate list of json objects
+        stats = LidarQ.run_pdal(self)  # generate list of json objects
         for file, stat in stats.items():
             epsg_stats = stat['stats']['bbox']
             if stat['filename']:
@@ -63,9 +63,11 @@ class LidarQ:
                                         'fname': fname,
                                         'path': path}}
                 i += 1
-            return {'schema': schema,
+            feat = {'schema': schema,
                     'props': props,
                     'crs': crs}
+            feats.append(feat)
+            return feats
 
 
 fl = [
@@ -77,5 +79,5 @@ fl = [
 
 lidar = LidarQ(fl)
 
-lidar_stats = lidar.run_pdal()
+lidar_stats = lidar.get_props()
 print(lidar_stats)
