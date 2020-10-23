@@ -16,7 +16,7 @@ class LidarQ:
         """
         self.lidar_file = lidar_file
 
-    def run_pdal(self):
+    def _run_pdal(self):
         """
         Invokes PDAL and pipes output back to python as json.
 
@@ -49,7 +49,7 @@ class LidarQ:
 
         path, fname = os.path.split(self.lidar_file)
 
-        stats = LidarQ.run_pdal(self)
+        stats = LidarQ._run_pdal(self)
 
         try:
             # Read metadata
