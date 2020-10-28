@@ -1,5 +1,6 @@
 import json
 import os
+import pyproj
 from pyproj import CRS
 from shapely.geometry import mapping, Polygon
 import subprocess as sp
@@ -40,30 +41,24 @@ class LidarQ:
         """
 
         # local parameters
-        schema = {'geometry': 'Polygon',
-                  'properties': {
-                      'id': 'int',
-                      'fname': 'str',
-                      'path': 'str'
-                  }}
-
         path, fname = os.path.split(self.lidar_file)
-
         stats = LidarQ._run_pdal(self)
 
         try:
             # Read metadata
             md = stats['metadata']
-            minx, miny = md['minx'], md['miny']
-            maxx, maxy = md['maxx'], md['maxy']
+
+            # Get native CRS and project to WGS84
             cmpd_crs = json.loads(
                 CRS.to_json(
                     CRS.from_wkt(md['comp_spatialreference'])
                 )
             )
+            native_crs = cmpd_crs['components'][0]['id']['code']
+            proj = pyproj.Transformer.from_crs(native_crs, 4326, always_xy=True)
 
-            # Sift out only the horizontal CRS for drawing projected extent footprint
-            xy_crs = CRS.from_epsg(cmpd_crs['components'][0]['id']['code']).to_string()
+            minx, miny = proj.transform(md['minx'], md['miny'])
+            maxx, maxy = proj.transform(md['maxx'], md['maxy'])
 
             # Create the geometry
             boundary = Polygon([
@@ -80,9 +75,15 @@ class LidarQ:
                         'path': path
                     }}
 
-            return {'schema': schema,
-                    'crs': xy_crs,
-                    'feature': feat}
+            return feat
 
         except ValueError:
             raise ValueError
+
+
+# test
+laz_file_a = "C:/Data/USGS_LPC_IL_4County_Cook_2017_LAS_15008550_LAS_2019.laz"
+laz_file_b = "C:/Data/UFO_BuckEye_PC_20200727.1033_2.laz"
+
+lfile_info = LidarQ(laz_file_b).get_props(0)
+print(lfile_info)
