@@ -83,16 +83,44 @@ class GeoIndexer:
     @staticmethod
     def _get_schema(geom_type):
         return {'geometry': geom_type,
-                'properties': {
-                    'id': 'int',
-                    'dataType': 'str',
-                    'fname': 'str',
-                    'path': 'str'
-                }}
+                'properties': OrderedDict([
+                    ('id', 'int'),
+                    ('dataType', 'str'),
+                    ('fname', 'str'),
+                    ('path', 'str'),
+                    ('parent', 'str'),
+                    ('native_crs', 'int')
+                ])}
 
     def get_extents(self):
         points = []
         polygons = []
+        
+        extents = {}
+        
+        poly_increment = 0
+        point_increment = 0
+        
+        if self.categorized['containers']:
+            pass
+        if self.categorized['jpg_files']:
+            pass
+        if self.categorized['lidar_files']:
+            for lf in self.categorized['lidar_files']:
+                polygons.append(LidarQ(lf).get_props(poly_increment))
+                poly_increment += 1
+        if self.categorized['rasters']:
+            for rf in self.categorized['rasters']:
+                polygons.append(RasterQ(rf).get_props(poly_increment))
+        if self.categorized['shapefiles']:
+            pass
+        
+        if len(polygons) > 0:
+            extents['polygons'] = polygons
+        if len(points) > 0:
+            extents['points'] = points
+            
+        return extents
 
 
 # testing
