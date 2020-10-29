@@ -68,22 +68,23 @@ class LidarQ:
                 [minx, maxy]
             ])
 
-            feat = {'geometry': mapping(boundary),
-                    'properties': {
-                        'id': oid,
-                        'fname': fname,
-                        'path': path
-                    }}
-
-            return feat
+            return {'type': 'Feature',
+                    'geometry': mapping(boundary),
+                    'properties': OrderedDict([
+                        ('id', oid),
+                        ('dataType', 'Lidar'),
+                        ('fname', fname),
+                        ('path', path),
+                        ('native_crs', cmpd_crs['components'][0]['id']['code'])
+                    ])}
 
         except ValueError:
             raise ValueError
 
 
-# test
-laz_file_a = "C:/Data/USGS_LPC_IL_4County_Cook_2017_LAS_15008550_LAS_2019.laz"
-laz_file_b = "C:/Data/UFO_BuckEye_PC_20200727.1033_2.laz"
+## test
+#laz_file_a = "C:/Data/USGS_LPC_IL_4County_Cook_2017_LAS_15008550_LAS_2019.laz"
+#laz_file_b = "C:/Data/UFO_BuckEye_PC_20200727.1033_2.laz"
 
-lfile_info = LidarQ(laz_file_b).get_props(0)
-print(lfile_info)
+#lfile_info = LidarQ(laz_file_b).get_props(0)
+#print(lfile_info)
