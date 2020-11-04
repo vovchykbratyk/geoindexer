@@ -5,6 +5,7 @@ from lidar import LidarQ
 import os
 from pathlib import Path
 from pyproj import CRS
+from raster import RasterQ
 import shapely
 
 
