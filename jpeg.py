@@ -1,8 +1,9 @@
+from collections import OrderedDict
 import os
 from pathlib import Path
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
-import re
+from shapely.geometry import mapping, Point
 
 
 class ImageMetaData(object):
@@ -10,6 +11,7 @@ class ImageMetaData(object):
     image = None
     
     def __init__(self, img_path):
+        self.img_path, self.img_name = os.path.split(img_path)
         self.image = Image.open(img_path)
         self.get_exif_data()
         super(ImageMetaData, self).__init__()
@@ -41,7 +43,7 @@ class ImageMetaData(object):
     def convert_to_degrees(value):
         return value[0] + (value[1] / 60.0) + (value[2] / 3600.0)
         
-    def get_lat_lon(self):
+    def get_props(self, oid):
         lat = None
         lon = None
         
@@ -60,9 +62,20 @@ class ImageMetaData(object):
                 lon = self.convert_to_degrees(gps_lon)
                 if gps_lon_ref == 'W':
                     lon = 0 - lon
-        return lat, lon
-        
-        
+
+        point = Point(lon, lat)
+
+        return {'type': 'Feature',
+                'geometry': mapping(point),
+                'properties': OrderedDict([
+                    ('id', oid),
+                    ('dataType', 'JPEG'),
+                    ('fname', self.img_name),
+                    ('path', self.img_path),
+                    ('native_crs', 4326)
+                ])}
+
+
 class GroundImages:
 
     def __init__(self, coords, radius, outpath):
@@ -70,23 +83,24 @@ class GroundImages:
         self.radius = radius
         self.outpath = outpath
         
-        # Do PKI authentication to ground photography service here
+        # Do PKI authentication to ground photography service(s) here
         
         
 # TESTING
 
-jpgdir = ""
+jpgdir = "/home/eric/OneDrive/Pictures/Camera Roll/2020/05"
 types = ['jpg', 'jpeg', 'png']
 
 imagelist = [str(p.resolve()) for p in Path(jpgdir).glob('**/*') if p.suffix[1:] in types]
+fid = 0
 
 for i in imagelist:
     try:
         md = ImageMetaData(i)
-        lat_lon = md.get_lat_lon()
-        if lat_lon[0] and lat_lon[1]:
-            print(lat_lon)
-            print('--------------------------------')
+        lat_lon = md.get_props(fid)
+        print(lat_lon)
+        print('--------------------')
+        fid += 1
     except Exception as e:
         print(f'Exception: {e}')
         pass
