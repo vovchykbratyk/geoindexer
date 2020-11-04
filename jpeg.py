@@ -30,13 +30,15 @@ class ImageMetaData(object):
                     exif_data[decoded] = value
         self.exif_data = exif_data
         return exif_data
-        
-    def get_if_exists(self, data, key):
+
+    @staticmethod
+    def get_if_exists(data, key):
         if key in data:
             return data[key]
         return None
-        
-    def convert_to_degrees(self, value):
+
+    @staticmethod
+    def convert_to_degrees(value):
         return value[0] + (value[1] / 60.0) + (value[2] / 3600.0)
         
     def get_lat_lon(self):
@@ -78,10 +80,10 @@ types = ['jpg', 'jpeg', 'png']
 
 imagelist = [str(p.resolve()) for p in Path(jpgdir).glob('**/*') if p.suffix[1:] in types]
 
-for i in imglist:
+for i in imagelist:
     try:
         md = ImageMetaData(i)
-        lat_lon = metadata.get_lat_lon()
+        lat_lon = md.get_lat_lon()
         if lat_lon[0] and lat_lon[1]:
             print(lat_lon)
             print('--------------------------------')
