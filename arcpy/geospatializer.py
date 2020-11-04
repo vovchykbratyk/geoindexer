@@ -13,7 +13,8 @@ class MapExtent:
         desc = arcpy.Describe(self.file)
         if hasattr(desc, "dataType"):
             dt = desc.dataType
-            if dt == ""
+            if dt == "":
+                pass
 
 
 class RasterIn(MapExtent):
