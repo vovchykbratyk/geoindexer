@@ -12,10 +12,12 @@ GeoIndexer is intended to help people with large amounts of uncatalogued spatial
 tbd
 
 ### dependencies
-fiona, gdal, pdal, PIL, pyproj, rasterio, shapely
+```fiona, gdal, pdal, PIL, pyproj, rasterio, shapely```
+
+in /arcpy/ there are some methods i'm testing using Esri's arcpy libraries.
 
 ## usage
 tbd
 
 ## licensing
-GeoIndexer relies on Free and Open Source (FOSS) libraries and is itself FOSS.  Do whatever you want with it.
+GeoIndexer relies on Free and Open Source (FOSS) libraries and is itself FOSS.  Do whatever you want with it.  The version that supports `arcpy`, obviously, requires an ArcGIS license of some sort.
