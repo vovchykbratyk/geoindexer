@@ -14,7 +14,7 @@ tbd
 ### dependencies
 ```fiona, gdal, pdal, PIL, pyproj, rasterio, shapely```
 
-in /arcpy/ there are some methods i'm testing using Esri's arcpy libraries.
+in /arcpy/ there are some methods i'm testing using Esri's `arcpy` libraries.
 
 ## usage
 tbd
