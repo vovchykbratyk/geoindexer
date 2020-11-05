@@ -2,7 +2,7 @@
 GeoIndexer is intended to help people with large amounts of uncatalogued spatial data to discover and catalogue it spatially.  This happens sometimes in large organizations where a NAS/SAN might get stuffed with content and nobody really has a good idea of what is where.  GeoIndexer can find and represent these holdings by either points (discrete locations) or polygons (coverage extents) that can be overlaid on a map and used to quickly locate and use the asset.
 
 ## data types supported
-1. Raster (TIFF, DTED, NITF, database arrays in containers such as Esri File Geodatabase and GeoPackage)
+1. Raster (TIFF, DTED, NITF, GeoPackage raster layers)
 2. Vector (SHP, containerized content such as Esri feature classes, GeoPackage layers, KML layers) # under development
 3. Lidar (.las, .laz)
 4. Web images (JPEG, and PNG theoretically)
