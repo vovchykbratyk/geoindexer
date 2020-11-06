@@ -1,6 +1,9 @@
 from collections import OrderedDict
+from container import ContainerQ
 import fiona
 import gdal
+from jpeg import ImageMetaData
+import json
 from lidar import LidarQ
 import os
 from pathlib import Path
@@ -33,12 +36,12 @@ class GeoCrawler:
         """
         if recursive:
             try:
-                return [str(p.resolve()) for p in Path(self.path).glob("**/*") if p.suffix in self.types]
+                return [str(p.resolve()) for p in Path(self.path).glob("**/*") if p.suffix[1:] in self.types]
             except PermissionError:
                 pass
         else:
             try:
-                return [str(p.resolve()) for p in Path(self.path).glob("*") if p.suffix in self.types]
+                return [str(p.resolve()) for p in Path(self.path).glob("*") if p.suffix[1:] in self.types]
             except PermissionError:
                 pass
 
@@ -95,18 +98,23 @@ class GeoIndexer:
                 ])}
 
     def get_extents(self):
+
         points = []
         polygons = []
         
-        extents = {}
+        extents = {'type': 'FeatureCollection',
+                   'features': []}
         
         poly_increment = 0
         point_increment = 0
         
         if self.categorized['containers']:
-            pass
+            for cf in self.categorized['containers']:
+                polygons.append(ContainerQ(cf).get_props(poly_increment))
+                poly_increment += 1
         if self.categorized['jpg_files']:
-            pass
+            for jf in self.categorized['jpg_files']:
+                points.append(ImageMetaData(jf).get_props(point_increment))
         if self.categorized['lidar_files']:
             for lf in self.categorized['lidar_files']:
                 polygons.append(LidarQ(lf).get_props(poly_increment))
@@ -118,19 +126,23 @@ class GeoIndexer:
             pass
         
         if len(polygons) > 0:
-            extents['polygons'] = polygons
+            for poly_feature in polygons:
+                extents['features'].append(json.loads(poly_feature))
         if len(points) > 0:
-            extents['points'] = points
+            for point_feature in points:
+                extents['features'].append(json.loads(point_feature))
             
         return extents
 
 
 # testing
-searchpath = "C:/Data"
-ftypes = ['.gdb', '.gpkg', '.kml', '.kmz', '.json', '.geojson',
-          '.jpg', '.jpeg', '.las', '.laz', '.tif', '.tiff', '.ntf',
-          '.nitf', '.dt0', '.dt1', '.dt2', '.shp']
+searchpath = "/home/eric/Data"
+ftypes = ['gdb', 'gpkg', 'kml', 'kmz', 'json', 'geojson',
+          'jpg', 'jpeg', 'las', 'laz', 'tif', 'tiff', 'ntf',
+          'nitf', 'dt0', 'dt1', 'dt2', 'shp']
 search = GeoCrawler(searchpath, ftypes).get_file_list()
 
 srtd = GeoIndexer(search)
 print(srtd.categorized)
+
+print(srtd.get_extents())

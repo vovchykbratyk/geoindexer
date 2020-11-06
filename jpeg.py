@@ -1,4 +1,5 @@
 from collections import OrderedDict
+import json
 import os
 from pathlib import Path
 from PIL import Image
@@ -65,15 +66,15 @@ class ImageMetaData(object):
 
         point = Point(lon, lat)
 
-        return {'type': 'Feature',
-                'geometry': mapping(point),
-                'properties': OrderedDict([
-                    ('id', oid),
-                    ('dataType', 'JPEG'),
-                    ('fname', self.img_name),
-                    ('path', self.img_path),
-                    ('native_crs', 4326)
-                ])}
+        return json.dumps({'type': 'Feature',
+                           'geometry': mapping(point),
+                           'properties': OrderedDict([
+                               ('id', oid),
+                               ('dataType', 'JPEG'),
+                               ('fname', self.img_name),
+                               ('path', self.img_path),
+                               ('native_crs', 4326)
+                           ])})
 
 
 class GroundImages:
@@ -88,19 +89,19 @@ class GroundImages:
         
 # TESTING
 
-jpgdir = "/home/eric/OneDrive/Pictures/Camera Roll/2020/05"
-types = ['jpg', 'jpeg', 'png']
-
-imagelist = [str(p.resolve()) for p in Path(jpgdir).glob('**/*') if p.suffix[1:] in types]
-fid = 0
-
-for i in imagelist:
-    try:
-        md = ImageMetaData(i)
-        lat_lon = md.get_props(fid)
-        print(lat_lon)
-        print('--------------------')
-        fid += 1
-    except Exception as e:
-        print(f'Exception: {e}')
-        pass
+# jpgdir = "/home/eric/OneDrive/Pictures/Camera Roll/2020/05"
+# types = ['jpg', 'jpeg', 'png']
+#
+# imagelist = [str(p.resolve()) for p in Path(jpgdir).glob('**/*') if p.suffix[1:] in types]
+# fid = 0
+#
+# for i in imagelist:
+#     try:
+#         md = ImageMetaData(i)
+#         lat_lon = md.get_props(fid)
+#         print(lat_lon)
+#         print('--------------------')
+#         fid += 1
+#     except Exception as e:
+#         print(f'Exception: {e}')
+#         pass

@@ -69,15 +69,15 @@ class LidarQ:
                 [minx, maxy]
             ])
 
-            return {'type': 'Feature',
-                    'geometry': mapping(boundary),
-                    'properties': OrderedDict([
-                        ('id', oid),
-                        ('dataType', 'Lidar'),
-                        ('fname', fname),
-                        ('path', path),
-                        ('native_crs', cmpd_crs['components'][0]['id']['code'])
-                    ])}
+            return json.dumps({'type': 'Feature',
+                               'geometry': mapping(boundary),
+                               'properties': OrderedDict([
+                                   ('id', oid),
+                                   ('dataType', 'Lidar'),
+                                   ('fname', fname),
+                                   ('path', path),
+                                   ('native_crs', cmpd_crs['components'][0]['id']['code'])
+                               ])})
 
         except ValueError:
             raise ValueError
