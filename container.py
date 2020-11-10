@@ -27,6 +27,18 @@ class ContainerQ:
         min_x, min_y = proj.transform(bounds[0], bounds[1])
         max_x, max_y = proj.transform(bounds[2], bounds[3])
         return min_x, min_y, max_x, max_y
+    
+    @staticmethod
+    def _get_geojson_record(geom, oid, datatype, fname, path, nativecrs):
+        return json.dumps({"type": "Feature",
+                           "geometry": mapping(geom),
+                           "properties": OrderedDict([
+                               ("id", oid),
+                               ("dataType", datatype),
+                               ("fname", fname),
+                               ("path", path),
+                               ("native_crs", nativecrs)
+                           ])})
 
     def get_props(self, oid):
         dt = None
@@ -62,17 +74,14 @@ class ContainerQ:
                                 [minx, maxy]
                             ])
 
-                            gj = {"type": "Feature",
-                                  "geometry": mapping(boundary),
-                                  "properties": OrderedDict([
-                                      ("id", oid),
-                                      ("dataType", dt),
-                                      ("fname", ln),
-                                      ("path", self.container),
-                                      ("native_crs", lyr_crs)
-                                  ])}
-
-                            feats.append(json.dumps(gj))
+                            feats.append(ContainerQ._get_geojson_record(
+                                geom=boundary,
+                                oid=oid,
+                                datatype=dt,
+                                fname=ln,
+                                path=self.container,
+                                nativecrs=lyr_crs
+                            ))
 
                         except (AttributeError, KeyError) as ke:
                             warnings.warn(f'Error: {ke} - Layer {lyr} has no Coordinate Reference System.')
@@ -84,26 +93,43 @@ class ContainerQ:
             dt = 'KML'
             gdf = None
 
-            if ext == 'kmz':
+            if ext.lower() == 'kmz':
                 kmz = ZipFile(self.container, 'r')
                 kml = kmz.open('doc.kml', 'r')
+                try:
+                    gdf = gpd.read_file(kml)
+                except Exception as e:
+                    print(f"Problem reading file {self.container} to GeoDataFrame: {e}")
+                    raise e
             else:
-                gdf = gpd.read_file(self.container)
-
-            bounds = gdf.bounds
-            minx, miny, maxx, maxy = bounds.minx.values[0], \
-                                     bounds.miny.values[0], \
-                                     bounds.maxx.values[0], \
-                                     bounds.maxy.values[0]
-
-
-
-            # process the kml container... TBD
-            kml_file = self.container
-            # with open(kml_file) as f:
-
-
-
-
-
+                try:
+                    gdf = gpd.read_file(self.container)
+                except Exception as e:
+                    print("Problem reading file {self.container} to GeoDataFrame: {e}")
+                    raise e
+                    
+            if gdf:
+                try:
+                    bounds = gdf.bounds
+                    minx, miny, maxx, maxy = bounds.minx.values[0], bounds.miny.values[0], bounds.maxx.values[0], bounds.maxy.values[0]
+                    boundary = Polygon([
+                        [minx, miny],
+                        [maxx, miny],
+                        [maxx, maxy],
+                        [minx, maxy]
+                    ])
+                    
+                    feats.append(ContainerQ._get_geojson_record(
+                        geom=boundary,
+                        oid=oid,
+                        datatype=dt,
+                        fname=os.path.split(self.container)[1],
+                        path=os.path.split(self.container)[0],
+                        nativecrs=gdf.crs.to_epsg()
+                    ))
+                except (AttributeError, KeyError) as ak_error:
+                    print(f"Error: {ak_error} - KML {self.container} has no boundary properties.")
+                    raise AttributeError
+                    
         return feats
+    
