@@ -45,6 +45,7 @@ class ContainerQ:
     def get_props(self, oid):
         dt = None
         ext = os.path.splitext(os.path.split(self.container)[1])[1][1:]
+        ext = ext.lower()
 
         feats = []
 
