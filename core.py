@@ -108,29 +108,41 @@ class GeoIndexer:
         poly_increment = 0
         point_increment = 0
         
-        if self.categorized['containers']:
+        try:
             for cf in self.categorized['containers']:
-                polygons.append(ContainerQ(cf).get_props(poly_increment))
-                poly_increment += 1
-        if self.categorized['jpg_files']:
+                c_feats = ContainerQ(cf).get_props(poly_increment)
+                for feat in container_feats:
+                    if feat:
+                        polygon.append(json.loads(feat))
+                last_element = json.loads(container_feats[-1])
+                poly_increment = last_element['properties']['id'] + 1
+                
             for jf in self.categorized['jpg_files']:
                 points.append(ImageMetaData(jf).get_props(point_increment))
-        if self.categorized['lidar_files']:
+                
             for lf in self.categorized['lidar_files']:
-                polygons.append(LidarQ(lf).get_props(poly_increment))
-                poly_increment += 1
-        if self.categorized['rasters']:
+                feat = LidarQ(lf).get_props(poly_increment)
+                if feat:
+                    polygons.append(json.loads(feat))
+                    poly_increment += 1
+                
             for rf in self.categorized['rasters']:
-                polygons.append(RasterQ(rf).get_props(poly_increment))
-        if self.categorized['shapefiles']:
+                feat = RasterQ(rf).get_props(poly_increment)
+                if feat:
+                    polygons.append(json.loads(feat))
+                    poly_increment += 1
+                    
+            for sf in self.categorized['shapefiles']:
+                pass
+            
+        except KeyError as ke:
+            print(f'No files in list: {ke}')
             pass
         
         if len(polygons) > 0:
-            for poly_feature in polygons:
-                extents['features'].append(json.loads(poly_feature))
+            extents['polygons'] = polygons
         if len(points) > 0:
-            for point_feature in points:
-                extents['features'].append(json.loads(point_feature))
+            extents['points'] = points
             
         return extents
 
