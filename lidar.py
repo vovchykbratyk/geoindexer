@@ -4,6 +4,7 @@ import os
 import pyproj
 from pyproj import CRS
 from shapely.geometry import mapping, Polygon
+import static
 import subprocess as sp
 
 
@@ -56,10 +57,12 @@ class LidarQ:
                 )
             )
             native_crs = cmpd_crs['components'][0]['id']['code']
-            proj = pyproj.Transformer.from_crs(native_crs, 4326, always_xy=True)
-
-            minx, miny = proj.transform(md['minx'], md['miny'])
-            maxx, maxy = proj.transform(md['maxx'], md['maxy'])
+            bounds = md['minx'], md['miny'], md['maxx'], md['maxy']
+            
+            if native_crs != 4326:
+                minx, miny, maxx, maxy = static.to_wgs84(native_crs, bounds)
+            else:
+                minx, miny, maxx, maxy = bounds[0], bounds[1], bounds[2], bounds[3]
 
             # Create the geometry
             boundary = Polygon([
@@ -69,18 +72,17 @@ class LidarQ:
                 [minx, maxy]
             ])
 
-            return json.dumps({'type': 'Feature',
-                               'geometry': mapping(boundary),
-                               'properties': OrderedDict([
-                                   ('id', oid),
-                                   ('dataType', 'Lidar'),
-                                   ('fname', fname),
-                                   ('path', path),
-                                   ('native_crs', cmpd_crs['components'][0]['id']['code'])
-                               ])})
+            return static.get_geojson_record(
+                geom=boundary,
+                oid=oid,
+                datatype="Lidar",
+                fname=fname,
+                path=path,
+                nativecrs=cmpd_crs['components'[0]['id']['code']
 
-        except ValueError:
-            raise ValueError
+        except Exception as e:
+            print(e)
+            pass
 
 
 ## test
