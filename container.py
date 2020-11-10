@@ -14,6 +14,8 @@ from zipfile import ZipFile
 # Set Fiona environment and enable KML driver
 fiona.Env()
 fiona.drvsupport.supported_drivers['LIBKML'] = 'r'
+fiona.drvsupport.supported_drivers['KML'] = 'r'
+fiona.drvsupport.supported_drivers['kml'] = 'r'
 
 
 class ContainerQ:
