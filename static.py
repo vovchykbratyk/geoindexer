@@ -119,3 +119,25 @@ def kmlextents(kmlfile):
 
     else:
         return None
+
+    
+def dms_to_dd(coords):
+    lat_d = coords[:2]
+    lat_m = coords[2:4]
+    lat_s = coords[4:6]
+    lat_dir = coords[6:7]
+    
+    lon_d = coords[7:10]
+    lon_m = coords[10:12]
+    lon_s = coords[12:14]
+    lon_dir = coords[14:15]
+    
+    dd_lat = float(lat_d) + float(lat_m)/60 + float(lat_s)/3600
+    if lat_dir == 'S':
+        dd_lat = 0 - dd_lat
+        
+    dd_lon = float(lon_d) + float(lon_m)/60 + float(lon_s)/3600
+    if lon_dir == 'W':
+        dd_lon = 0 - dd_lon
+        
+    return dd_lat, dd_lon
