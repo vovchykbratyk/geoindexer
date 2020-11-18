@@ -31,7 +31,7 @@ class LidarQ:
 
         return json.loads(r.stdout.decode())
 
-    def get_props(self, oid):
+    def get_props(self):
         """
         Parses the PDAL-obtained metadata and returns a schema and geojson object to be
         passed for writing.
@@ -74,11 +74,10 @@ class LidarQ:
 
             return static.get_geojson_record(
                 geom=boundary,
-                oid=oid,
                 datatype="Lidar",
                 fname=fname,
                 path=path,
-                nativecrs=cmpd_crs['components'[0]['id']['code']
+                nativecrs=cmpd_crs['components'][0]['id']['code'])
 
         except Exception as e:
             print(e)

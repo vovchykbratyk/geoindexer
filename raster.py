@@ -1,9 +1,8 @@
-from collections import OrderedDict
 import os
 import pyproj
 import rasterio
 from shapely.geometry import mapping, Polygon
-
+import static
 
 class RasterQ:
 
@@ -23,7 +22,7 @@ class RasterQ:
         max_x, max_y = proj.transform(bounds.right, bounds.top)
         return min_x, min_y, max_x, max_y
 
-    def get_props(self, oid):
+    def get_props(self):
         ext = RasterQ._get_file_extension(self)
         if ext.startswith('dt'):
             dt = 'DTED'
@@ -35,27 +34,27 @@ class RasterQ:
         with rasterio.open(self.raster_file) as r:
             try:
                 epsg = r.crs.to_epsg()
-                if epsg != 4326:
-                    minx, miny, maxx, maxy = RasterQ._to_wgs84(epsg, r.bounds)
-                else:
-                    bounds = r.bounds
-                    minx, miny, maxx, maxy = bounds.left, bounds.bottom, bounds.right, bounds.top
+                if epsg:
+                    if epsg != 4326:
+                        bounds = r.bounds.left, r.bounds.bottom, r.bounds.right, r.bounds.top
+                        minx, miny, maxx, maxy = static.to_wgs84(epsg, bounds)
+                    else:
+                        bounds = r.bounds
+                        minx, miny, maxx, maxy = bounds.left, bounds.bottom, bounds.right, bounds.top
 
-                boundary = Polygon([
-                    [minx, miny],
-                    [maxx, miny],
-                    [maxx, maxy],
-                    [minx, maxy]
-                ])
+                    boundary = Polygon([
+                        [minx, miny],
+                        [maxx, miny],
+                        [maxx, maxy],
+                        [minx, maxy]
+                    ])
 
-                return {'type': 'Feature',
-                        'geometry': mapping(boundary),
-                        'properties': OrderedDict([
-                            ('id', oid),
-                            ('dataType', dt),
-                            ('fname', r.name),
-                            ('path', os.path.split(self.raster_file)[0]),
-                            ('native_crs', r.crs.to_epsg())
-                        ])}
+                    return static.get_geojson_record(
+                        geom=boundary,
+                        datatype=dt,
+                        fname=r.name,
+                        path=os.path.split(self.raster_file)[0],
+                        nativecrs=r.crs.to_epsg())
+
             except AttributeError:
                 pass

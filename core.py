@@ -2,7 +2,7 @@ from collections import OrderedDict
 from container import ContainerQ
 import fiona
 import gdal
-from jpeg import ImageMetaData
+from jpeg import ExifQ
 import json
 from lidar import LidarQ
 import os
@@ -99,38 +99,41 @@ class GeoIndexer:
 
     def get_extents(self):
 
+        report = {'container_layers': 0,
+                  'web_images': 0,
+                  'lidar_pointclouds': 0,
+                  'rasters': 0,
+                  'shapefiles': 0}
+
         points = []
         polygons = []
         
         extents = {'type': 'FeatureCollection',
                    'features': []}
         
-        poly_increment = 0
-        point_increment = 0
-        
         try:
             for cf in self.categorized['containers']:
-                c_feats = ContainerQ(cf).get_props(poly_increment)
+                container_feats = ContainerQ(cf).get_props()
                 for feat in container_feats:
                     if feat:
-                        polygon.append(json.loads(feat))
-                last_element = json.loads(container_feats[-1])
-                poly_increment = last_element['properties']['id'] + 1
+                        polygons.append(json.loads(feat))
+                        report['container_layers'] += 1
                 
             for jf in self.categorized['jpg_files']:
-                points.append(ImageMetaData(jf).get_props(point_increment))
+                points.append(ExifQ(jf).get_props())
+                report['web_images'] += 1
                 
             for lf in self.categorized['lidar_files']:
-                feat = LidarQ(lf).get_props(poly_increment)
+                feat = LidarQ(lf).get_props()
                 if feat:
                     polygons.append(json.loads(feat))
-                    poly_increment += 1
+                    report['lidar_pointclouds'] += 1
                 
             for rf in self.categorized['rasters']:
-                feat = RasterQ(rf).get_props(poly_increment)
+                feat = RasterQ(rf).get_props()
                 if feat:
                     polygons.append(json.loads(feat))
-                    poly_increment += 1
+                    report['rasters'] += 1
                     
             for sf in self.categorized['shapefiles']:
                 pass
@@ -140,21 +143,20 @@ class GeoIndexer:
             pass
         
         if len(polygons) > 0:
-            extents['polygons'] = polygons
+            extents['features'] = polygons
         if len(points) > 0:
-            extents['points'] = points
+            extents['features'] = points
             
-        return extents
+        return json.dumps(extents)
 
 
 # testing
-searchpath = "/home/eric/Data"
-ftypes = ['gdb', 'gpkg', 'kml', 'kmz', 'json', 'geojson',
+searchpath = "C:/Data"
+ftypes = ['gpkg', 'json', 'geojson',
           'jpg', 'jpeg', 'las', 'laz', 'tif', 'tiff', 'ntf',
           'nitf', 'dt0', 'dt1', 'dt2', 'shp']
 search = GeoCrawler(searchpath, ftypes).get_file_list()
 
 srtd = GeoIndexer(search)
-print(srtd.categorized)
 
 print(srtd.get_extents())

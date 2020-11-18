@@ -101,8 +101,8 @@ class ContainerQ:
                     nativecrs=4326  # KML is always in 4326
                 ))
 
-            except (AttributeError, KeyError, ValueError) as ak_error:
-                print(f"Error: {ak_error} - KML {self.container} has no boundary properties.")
-                raise AttributeError
+            except Exception as e:
+                print(f"Error: {e} - KML {self.container} has no boundary properties.")
+                pass
                     
         return feats
