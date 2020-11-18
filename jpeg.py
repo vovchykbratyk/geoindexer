@@ -70,7 +70,6 @@ class ExifQ(object):
                 point = Point(lat, lon)
 
                 return static.get_geojson_record(geom=point,
-                                                 oid=oid,
                                                  datatype=self.dt,
                                                  fname=os.path.split(self.img_path)[1],
                                                  path=os.path.split(self.img_path)[0],
