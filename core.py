@@ -1,16 +1,14 @@
-from collections import OrderedDict
-from container import ContainerQ
-import fiona
+import container
 import gdal
-from jpeg import ExifQ
+import geopandas as gpd
+import jpeg
 import json
-from lidar import LidarQ
+import lidar
 import os
 from pathlib import Path
 from pyproj import CRS
-from raster import RasterQ
-import shapely
-
+import raster
+import shapefile
 
 class GeoCrawler:
 
@@ -118,26 +116,48 @@ class GeoIndexer:
                     if feat:
                         polygons.append(json.loads(feat))
                         report['container_layers'] += 1
-                
+        except KeyError as ke:
+            print(f'No files in list: {ke}')
+            pass
+        
+        try:    
             for jf in self.categorized['jpg_files']:
                 points.append(ExifQ(jf).get_props())
                 report['web_images'] += 1
                 
+        except KeyError as ke:
+            print(f'No files in list: {ke}')
+            pass
+        
+        try:
             for lf in self.categorized['lidar_files']:
                 feat = LidarQ(lf).get_props()
                 if feat:
                     polygons.append(json.loads(feat))
                     report['lidar_pointclouds'] += 1
-                
+                    
+        except KeyError as ke:
+            print(f'No files in list: {ke}')
+            pass
+        
+        try:    
             for rf in self.categorized['rasters']:
                 feat = RasterQ(rf).get_props()
                 if feat:
                     polygons.append(json.loads(feat))
                     report['rasters'] += 1
                     
+        except KeyError as ke:
+            print(f'No files in list: {ke}')
+            pass
+        
+        try:        
             for sf in self.categorized['shapefiles']:
-                pass
-            
+                feat = shpfile.ShapeQ(sf).get_props()
+                if feat:
+                    polygons.append(json.loads(feat))
+                    report['shapefiles'] += 1
+                    
         except KeyError as ke:
             print(f'No files in list: {ke}')
             pass
