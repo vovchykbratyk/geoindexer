@@ -167,7 +167,7 @@ class GeoIndexer:
         if len(points) > 0:
             extents['features'] = points
             
-        return json.dumps(extents)
+        return json.dumps(extents), report
 
 
 # testing
