@@ -1,10 +1,17 @@
 from collections import OrderedDict
+from datetime import datetime
 import json
+import os
 import pyproj
 from pyproj import CRS
 import re
 from shapely.geometry import mapping
 from zipfile import ZipFile
+
+
+def moddate(filename):
+    lm = os.stat(filename).st_mtime
+    return datetime.fromtimestamp(lm).strftime('%Y-%m-%dT%H:%M:%S')
 
 
 def get_schema(geom_type):
@@ -25,16 +32,29 @@ def to_wgs84(native_epsg, bounds):
     return minx, miny, maxx, maxy
     
     
-def get_geojson_record(geom, datatype, fname, path, nativecrs):
-    return json.dumps({"type": "Feature",
-                       "geometry": mapping(geom),
-                       "properties": OrderedDict([
-                           ("dataType", datatype),
-                           ("fname", fname),
-                           ("path", path),
-                           ("native_crs", nativecrs)
-                       ])})
-
+def get_geojson_record(geom, datatype, fname, path, nativecrs, lastmod, img_popup=None):
+    if img_popup:
+        return json.dumps({"type": "Feature",
+                           "geometry": mapping(geom),
+                           "properties": OrderedDict([
+                               ("dataType", datatype),
+                               ("fname", fname),
+                               ("path", f'file:///{path}),
+                               ("img_popup", f'file:///{img_popup}')
+                               ("native_crs", nativecrs),
+                               ("lastmod", lastmod)
+                           ])})
+    else:
+         return json.dumps({"type": "Feature",
+                           "geometry": mapping(geom),
+                           "properties": OrderedDict([
+                               ("dataType", datatype),
+                               ("fname", fname),
+                               ("path", f'file:///{path}),
+                               ("native_crs", nativecrs),
+                               ("lastmod", lastmod)
+                           ])})
+                               
 
 def _openkmz(kmz):
     data = None
