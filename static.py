@@ -61,6 +61,8 @@ def kmlextents(kmlfile):
             data = _openkmz(kmlfile)
         elif kmlfile.lower().endswith('kml'):  # It's a KML and does not have to be unzipped
             data = _openkml(kmlfile)
+            
+        data = data.replace('\n', '').replace('\r', '').replace('\t', '')
 
         try:
             ys = re.findall(r'<latitude>(.+?)</latitude>', data)
