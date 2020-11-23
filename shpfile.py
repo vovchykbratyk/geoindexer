@@ -25,7 +25,12 @@ class ShapeQ:
                 [minx, maxy]
             ])
             
-            return static.get_geojson_record(geom=boundary, datatype='Shapefile', fname=os.path.split(self.shp)[1], path=os.path.split(self.shp)[0], nativecrs=org_crs, lastmod=static.moddate(self.shp))
+            return static.get_geojson_record(geom=boundary,
+                                             datatype='Shapefile',
+                                             fname=os.path.split(self.shp)[1],
+                                             path=os.path.split(self.shp)[0],
+                                             nativecrs=org_crs,
+                                             lastmod=static.moddate(self.shp))
             
         except Exception as e:
             print(f'{e}: Problem reading shapefile to geodataframe.')

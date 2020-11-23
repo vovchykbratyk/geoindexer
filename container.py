@@ -71,7 +71,8 @@ class ContainerQ:
                                 datatype=dt,
                                 fname=ln,
                                 path=self.container,
-                                nativecrs=lyr_crs
+                                nativecrs=lyr_crs,
+                                lastmod=static.moddate(self.container)
                             ))
 
                         except (AttributeError, KeyError) as ke:
@@ -98,7 +99,8 @@ class ContainerQ:
                     datatype=dt,
                     fname=os.path.split(self.container)[1],
                     path=os.path.split(self.container)[0],
-                    nativecrs=4326  # KML is always in 4326
+                    nativecrs=4326,  # KML is always in 4326
+                    lastmod=static.moddate(self.container)
                 ))
 
             except Exception as e:

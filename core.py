@@ -1,14 +1,13 @@
-import container
-import gdal
-import geopandas as gpd
-import jpeg
-import json
+import shpfile
 import lidar
+import jpeg
+import raster
+import container
+import json
 import os
 from pathlib import Path
 from pyproj import CRS
-import raster
-import shapefile
+
 
 class GeoCrawler:
 
@@ -83,18 +82,6 @@ class GeoIndexer:
             print(e)
             raise e
 
-    @staticmethod
-    def _get_schema(geom_type):
-        return {'geometry': geom_type,
-                'properties': OrderedDict([
-                    ('id', 'int'),
-                    ('dataType', 'str'),
-                    ('fname', 'str'),
-                    ('path', 'str'),
-                    ('parent', 'str'),
-                    ('native_crs', 'int')
-                ])}
-
     def get_extents(self):
 
         report = {'container_layers': 0,
@@ -111,7 +98,7 @@ class GeoIndexer:
         
         try:
             for cf in self.categorized['containers']:
-                container_feats = ContainerQ(cf).get_props()
+                container_feats = container.ContainerQ(cf).get_props()
                 for feat in container_feats:
                     if feat:
                         polygons.append(json.loads(feat))
@@ -122,7 +109,7 @@ class GeoIndexer:
         
         try:    
             for jf in self.categorized['jpg_files']:
-                points.append(ExifQ(jf).get_props())
+                points.append(jpeg.ExifQ(jf).get_props())
                 report['web_images'] += 1
                 
         except KeyError as ke:
@@ -131,7 +118,7 @@ class GeoIndexer:
         
         try:
             for lf in self.categorized['lidar_files']:
-                feat = LidarQ(lf).get_props()
+                feat = lidar.LidarQ(lf).get_props()
                 if feat:
                     polygons.append(json.loads(feat))
                     report['lidar_pointclouds'] += 1
@@ -142,7 +129,7 @@ class GeoIndexer:
         
         try:    
             for rf in self.categorized['rasters']:
-                feat = RasterQ(rf).get_props()
+                feat = raster.RasterQ(rf).get_props()
                 if feat:
                     polygons.append(json.loads(feat))
                     report['rasters'] += 1
@@ -171,12 +158,13 @@ class GeoIndexer:
 
 
 # testing
-searchpath = "C:/Data"
-ftypes = ['gpkg', 'json', 'geojson',
-          'jpg', 'jpeg', 'las', 'laz', 'tif', 'tiff', 'ntf',
-          'nitf', 'dt0', 'dt1', 'dt2', 'shp']
-search = GeoCrawler(searchpath, ftypes).get_file_list()
+if __name__ == '__main__':
+    searchpath = "C:/Data"
+    ftypes = ['gpkg', 'json', 'geojson',
+              'jpg', 'jpeg', 'las', 'laz', 'tif', 'tiff', 'ntf',
+              'nitf', 'dt0', 'dt1', 'dt2', 'shp']
+    search = GeoCrawler(searchpath, ftypes).get_file_list()
 
-srtd = GeoIndexer(search)
+    srtd = GeoIndexer(search)
 
-print(srtd.get_extents())
+    print(srtd.get_extents())

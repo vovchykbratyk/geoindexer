@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 from shapely.geometry import Point
@@ -45,7 +44,7 @@ class ExifQ(object):
     def convert_to_degrees(value):
         return value[0] + (value[1] / 60.0) + (value[2] / 3600.0)
 
-    def get_props(self, oid):
+    def get_props(self):
         lat = None
         lon = None
 
@@ -73,7 +72,8 @@ class ExifQ(object):
                                                  datatype=self.dt,
                                                  fname=os.path.split(self.img_path)[1],
                                                  path=os.path.split(self.img_path)[0],
-                                                 nativecrs=4326)
+                                                 nativecrs=4326,
+                                                 lastmod=static.moddate(self.img_path))
 
         except Exception as e:
             print(f"Problem getting GPS info from {self.img_path}: {e}")

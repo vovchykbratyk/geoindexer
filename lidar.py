@@ -1,9 +1,7 @@
-from collections import OrderedDict
 import json
 import os
-import pyproj
 from pyproj import CRS
-from shapely.geometry import mapping, Polygon
+from shapely.geometry import Polygon
 import static
 import subprocess as sp
 
@@ -35,9 +33,6 @@ class LidarQ:
         """
         Parses the PDAL-obtained metadata and returns a schema and geojson object to be
         passed for writing.
-
-        :param oid: index number
-        :type oid: int
 
         :return: dict
         """
@@ -77,16 +72,10 @@ class LidarQ:
                 datatype="Lidar",
                 fname=fname,
                 path=path,
-                nativecrs=cmpd_crs['components'][0]['id']['code'])
+                nativecrs=cmpd_crs['components'][0]['id']['code'],
+                lastmod=static.moddate(self.lidar_file)
+            )
 
         except Exception as e:
             print(e)
             pass
-
-
-## test
-#laz_file_a = "C:/Data/USGS_LPC_IL_4County_Cook_2017_LAS_15008550_LAS_2019.laz"
-#laz_file_b = "C:/Data/UFO_BuckEye_PC_20200727.1033_2.laz"
-
-#lfile_info = LidarQ(laz_file_b).get_props(0)
-#print(lfile_info)

@@ -1,8 +1,10 @@
+import gdal
 import os
 import pyproj
 import rasterio
-from shapely.geometry import mapping, Polygon
+from shapely.geometry import Polygon
 import static
+
 
 class RasterQ:
 
@@ -54,7 +56,8 @@ class RasterQ:
                                                          datatype=dt,
                                                          fname=r.name,
                                                          path=os.path.split(self.raster_file)[0],
-                                                         nativecrs=r.crs.to_epsg())
+                                                         nativecrs=r.crs.to_epsg(),
+                                                         lastmod=static.moddate(self.raster_file))
                 except Exception as e:
                     try:
                         filename = None
@@ -80,11 +83,12 @@ class RasterQ:
                                 return static.get_geojson_record(geom=boundary,
                                                                  datatype=dt,
                                                                  fname=filename,
-                                                                 path='file:///' + os.path.split(self.raster_file)[0],
-                                                                 nativecrs=4326)
+                                                                 path=os.path.split(self.raster_file)[0],
+                                                                 nativecrs=4326,
+                                                                 lastmod=static.moddate(self.raster_file))
                                                                  
                     except Exception as e:
-                        print(f'Unable to open {self.raster_file} even with GDAL, giving up...')
+                        print(f'{e}: Unable to open {self.raster_file} even with GDAL, giving up...')
                         return None
-        except exception as e:
+        except Exception:
             return None

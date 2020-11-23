@@ -3,7 +3,6 @@ from datetime import datetime
 import json
 import os
 import pyproj
-from pyproj import CRS
 import re
 from shapely.geometry import mapping
 from zipfile import ZipFile
@@ -39,18 +38,18 @@ def get_geojson_record(geom, datatype, fname, path, nativecrs, lastmod, img_popu
                            "properties": OrderedDict([
                                ("dataType", datatype),
                                ("fname", fname),
-                               ("path", f'file:///{path}),
-                               ("img_popup", f'file:///{img_popup}')
+                               ("path", f'file:///{path}'),
+                               ("img_popup", f'file:///{img_popup}'),
                                ("native_crs", nativecrs),
                                ("lastmod", lastmod)
                            ])})
     else:
-         return json.dumps({"type": "Feature",
+        return json.dumps({"type": "Feature",
                            "geometry": mapping(geom),
                            "properties": OrderedDict([
                                ("dataType", datatype),
                                ("fname", fname),
-                               ("path", f'file:///{path}),
+                               ("path", f'file:///{path}'),
                                ("native_crs", nativecrs),
                                ("lastmod", lastmod)
                            ])})
@@ -127,8 +126,8 @@ def kmlextents(kmlfile):
                     print(f'{e}...something in inner loop failed...')
                     pass
 
-        except Exception:
-            print('exception')
+        except Exception as e:
+            print(f'{e}: Could not parse this KML data.')
             pass
 
     if len(xf) > 0 and len(yf) > 0:
