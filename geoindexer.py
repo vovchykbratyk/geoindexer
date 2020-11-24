@@ -5,6 +5,10 @@ from pathlib import Path
 from pyproj import CRS
 
 
+def no_values(row):
+    return f"No files in list: {row}."
+
+
 class GeoCrawler:
 
     def __init__(self, path, types):
@@ -100,7 +104,7 @@ class GeoIndexer:
                         polygons.append(json.loads(feat))
                         report['container_layers'] += 1
         except KeyError as ke:
-            print(f'No files in list: {ke}')
+            print(no_values(ke))
             pass
         
         try:    
@@ -109,7 +113,7 @@ class GeoIndexer:
                 report['web_images'] += 1
                 
         except KeyError as ke:
-            print(f'No files in list: {ke}')
+            print(no_values(ke))
             pass
         
         try:
@@ -120,7 +124,7 @@ class GeoIndexer:
                     report['lidar_pointclouds'] += 1
                     
         except KeyError as ke:
-            print(f'No files in list: {ke}')
+            print(no_values(ke))
             pass
         
         try:    
@@ -131,7 +135,7 @@ class GeoIndexer:
                     report['rasters'] += 1
                     
         except KeyError as ke:
-            print(f'No files in list: {ke}')
+            print(no_values(ke))
             pass
         
         try:        
@@ -142,7 +146,7 @@ class GeoIndexer:
                     report['shapefiles'] += 1
                     
         except KeyError as ke:
-            print(f'No files in list: {ke}')
+            print(no_values(ke))
             pass
         
         if len(polygons) > 0:
