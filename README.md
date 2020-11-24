@@ -30,7 +30,9 @@ path = '/path/to/search'
 filetypes = ['gpkg', 'gdb', 'jpg', 'tif', 'ntf', 'nitf', 'las', 'laz']
 
 found = GeoCrawler(path)
-coverage = GeoIndexer(found).get_extents()
+results = GeoIndexer(found).get_extents()
+coverage = results[0]  # the geojson object
+report = results[1]  # run statistics dict, do whatever with it
 
 gdf = gpd.GeoDataFrame.from_features(coverage['features'])
 
