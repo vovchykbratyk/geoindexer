@@ -9,13 +9,13 @@ class GeoCrawler:
 
     def __init__(self, path, types):
         """
-                Default GeoCrawler instance.
+        Default GeoCrawler instance.
 
-                :param path: The path to be crawled
-                :type path: str
-                :param types: List of file extensions
-                :type types: list
-                """
+        :param path: The path to be crawled
+        :type path: str
+        :param types: List of file extensions
+        :type types: list
+        """
         self.path = path
         self.types = types
 
