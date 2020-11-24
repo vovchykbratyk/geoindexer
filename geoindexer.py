@@ -1,8 +1,4 @@
-import shpfile
-import lidar
-import jpeg
-import raster
-import container
+from handlers import Container, Exif, Lidar, Raster, Shapefile
 import json
 import os
 from pathlib import Path
@@ -98,7 +94,7 @@ class GeoIndexer:
         
         try:
             for cf in self.categorized['containers']:
-                container_feats = container.ContainerQ(cf).get_props()
+                container_feats = Container(cf).get_props()
                 for feat in container_feats:
                     if feat:
                         polygons.append(json.loads(feat))
@@ -109,7 +105,7 @@ class GeoIndexer:
         
         try:    
             for jf in self.categorized['jpg_files']:
-                points.append(jpeg.ExifQ(jf).get_props())
+                points.append(Exif(jf).get_props())
                 report['web_images'] += 1
                 
         except KeyError as ke:
@@ -118,7 +114,7 @@ class GeoIndexer:
         
         try:
             for lf in self.categorized['lidar_files']:
-                feat = lidar.LidarQ(lf).get_props()
+                feat = Lidar(lf).get_props()
                 if feat:
                     polygons.append(json.loads(feat))
                     report['lidar_pointclouds'] += 1
@@ -129,7 +125,7 @@ class GeoIndexer:
         
         try:    
             for rf in self.categorized['rasters']:
-                feat = raster.RasterQ(rf).get_props()
+                feat = Raster(rf).get_props()
                 if feat:
                     polygons.append(json.loads(feat))
                     report['rasters'] += 1
@@ -140,7 +136,7 @@ class GeoIndexer:
         
         try:        
             for sf in self.categorized['shapefiles']:
-                feat = shpfile.ShapeQ(sf).get_props()
+                feat = Shapefile(sf).get_props()
                 if feat:
                     polygons.append(json.loads(feat))
                     report['shapefiles'] += 1
@@ -157,9 +153,9 @@ class GeoIndexer:
         return json.dumps(extents), report
 
 
-# testing
+# Testing
 if __name__ == '__main__':
-    searchpath = "C:/Data"
+    searchpath = ""
     ftypes = ['gpkg', 'json', 'geojson',
               'jpg', 'jpeg', 'las', 'laz', 'tif', 'tiff', 'ntf',
               'nitf', 'dt0', 'dt1', 'dt2', 'shp']

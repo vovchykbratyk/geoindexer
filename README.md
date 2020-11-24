@@ -6,37 +6,42 @@ GeoIndexer is intended to help people with large amounts of uncatalogued spatial
 2. Vector (SHP, containerized content such as Esri feature classes, GeoPackage layers, KML layers)
 3. Lidar (.las, .laz)
 4. Web images (JPEG, and PNG... theoretically)
-5. Other containerized content (KML-wrapped content such as Collada models, valid GeoJSON files, OpenStreetMap Planet Binary Format (PBF) # under development
+5. *Under development* - Other containerized content (valid GeoJSON files, OpenStreetMap Planet Binary Format, virtual raster tables)
+6. *Future plans* - Explicit/implicit location parsing in common document formats (.docx, .odt, .txt, .pdf)
 
 ## installation
 `git clone https://github.com/vovchykbratyk/geoindexer.git`
 
-This project has been a learning experience for me, so eventually when I learn how to wrap all this up with a `setup.py`
-file, I'll submit it for `pip` and `conda` installation.
+This project has been a learning experience for me, eventually I will sit down and learn how to publish this for `pip` installation and will update this section.
 
-### dependencies
-```fiona, gdal, pdal, PIL, pyproj, rasterio, shapely```
+### dependencies/requirements
+```fiona, gdal, geopandas, pdal, PIL, pyproj, rasterio, shapely```
 
-in /arcpy/ there are some methods i'm testing using Esri's `arcpy` libraries.
+in /arcpy/ there are some methods i'm testing using Esri's `arcpy` libraries, but at this point I don't rely on them for anything.
 
 ## example usage
+Here is a simple example using GeoIndexer with GeoPandas to discover and construct coverage geometry for GeoPackage layers, File Geodatabase layers, Lidar point clouds, JPEG images, TIFF rasters and NITF rasters, outputting the coverage to a GeoPackage layer.
 ```
-from geoindexer import core as gi
+from geoindexer import GeoCrawler, GeoIndexer
+import geopandas as gpd
 
-"""
-This example will find and generate extents for raster, 
-geopackage layers, file geodatabase layers and lidar point
-clouds within a search path, returning it as a geojson
-object that can be easily cast to any number of formats
-"""
 
 path = '/path/to/search'
-filetypes = ['gpkg', 'gdb', 'tif', 'laz']
-found = gi.GeoCrawler(path)
+filetypes = ['gpkg', 'gdb', 'jpg', 'tif', 'ntf', 'nitf', 'las', 'laz']
 
-coverage = gi.GeoIndexer(found).get_extents()
+found = GeoCrawler(path)
+coverage = GeoIndexer(found).get_extents()
+
+gdf = gpd.GeoDataFrame.from_features(coverage['features'])
+
+outfile = "/home/username/output.gpkg"
+layername = "coverage"
+driver="GPKG"
+
+gdf.to_file(outfile, layer=layername, driver=driver)
 ```
 
 ## licensing
 GeoIndexer relies on Free and Open Source (FOSS) libraries and any/all restrictions attached to those libraries are
-inherited. Any leverage of the `arcpy` library, obviously, requires an ArcGIS license of some sort.
+inherited. As I am new to this, I am also still sort of figuring out licensing and will update this as I go.
+Any leverage of the `arcpy` library, obviously, requires an ArcGIS license of some sort.
