@@ -19,9 +19,17 @@ from zipfile import ZipFile
 class Container:
 
     def __init__(self, container):
+        """
+        Container constructor
+        """
         self.container = container
 
     def get_props(self):
+        """
+        Cracks a Container instance and returns a list of layer extents in geojson
+
+        :return: list
+        """
         dt = None
         ext = os.path.splitext(os.path.split(self.container)[1])[1][1:]
         ext = ext.lower()
@@ -113,6 +121,12 @@ class Exif(object):
         self.dt = 'JPEG Image'
 
     def get_exif_data(self):
+        """
+        Opens an Exif instance (jpg format), determines if GPS coordinates are available,
+        and returns location as a geojson point object.
+
+        :return: json
+        """
         exif_data = {}
         info = self.image._getexif()
         if info:
