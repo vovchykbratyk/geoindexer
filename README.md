@@ -26,21 +26,55 @@ from geoindexer import GeoCrawler, GeoIndexer
 import geopandas as gpd
 
 
-path = '/path/to/search'
-filetypes = ['gpkg', 'gdb', 'jpg', 'tif', 'ntf', 'nitf', 'las', 'laz']
+if __name__ == '__main__':
+    
+    # Setup parameters
+    searchpath = "path/to/data"
+    ftypes = ['gpkg', 'kml', 'kmz', 'jpg',
+              'jpeg', 'las', 'laz', 'tif',
+              'tiff', 'ntf', 'nitf', 'dt0',
+              'dt1', 'dt2', 'shp', 'gdb']
+    logpath = "path/to/log"
 
-found = GeoCrawler(path, filetypes)
-results = GeoIndexer(found).get_extents()
-coverage = results[0]  # the geojson object
-report = results[1]  # run statistics dict, do whatever with it
+    # Discover results and get their coverage extents
+    search = GeoCrawler(searchpath, ftypes).get_file_list()
+    results = GeoIndexer(search).get_extents(logging=logpath)
 
-gdf = gpd.GeoDataFrame.from_features(coverage['features'])
+    # Split out the results to do things with them.
+    cvg_areas = results[0]  # this is the geojson object
+    statistics = results[1]  # these are various reporting stats
+    failures = results[2]  # this is a list of files/layers that failed just in case
 
-outfile = "/home/username/output.gpkg"
-layername = "coverage"
-driver="GPKG"
+    # Put it in a GeoDataframe
+    gdf = gpd.GeoDataFrame.from_features(cvg_areas['features'])
 
-gdf.to_file(outfile, layer=layername, driver=driver)
+    # Set up a geopackage object to write it out
+    gpkg_out = "C:/Temp/coverage_new.gpkg"
+    driver = "GPKG"
+
+    points = gdf.copy()
+    points['geometry'] = points['geometry'].centroid  # Create a set of center points, helpful with very dense data
+    points.to_file(gpkg_out, layer="cvg_centroids", driver=driver)
+    gdf.to_file(gpkg_out, layer="cvg_original", driver=driver)
+
+    # Now report some optional statistics
+    print('--------------------------')
+    print('--------STATISTICS--------')
+    print('--------------------------')
+    for k, v in statistics.items():
+        print(f"{k.title().replace('_', ' ')}: {v}")
+
+    print('')
+
+    for k, v in failures.items():
+        print(f'Failed {k.title()}:')
+        for x in v:
+            if k == "layers":
+                print(f'\t{" | ".join(x)}')
+            else:
+                print(f'\t{x}')
+
+
 ```
 
 ## licensing
