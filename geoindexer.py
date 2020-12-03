@@ -8,10 +8,6 @@ import sys
 from tqdm import tqdm
 
 
-def no_values(row):
-    return f"No files in list: {row}."
-
-
 def now():
     return datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
 
