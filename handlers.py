@@ -16,6 +16,20 @@ import subprocess as sp
 from zipfile import ZipFile
 
 
+class Log:
+
+    def __init__(self, lines: list):
+        self.lines = lines
+
+    def to_file(self, path):
+        logname = 'geoindexer_' + datetime.now().strftime('%Y%m%dT%H%M%S') + '.log'
+        log = os.path.join(path, logname)
+        with open(log, 'w') as outlog:
+            for line in self.lines:
+                outlog.write(f'{line}\n')
+        return logname
+
+
 class Container:
 
     def __init__(self, container):
@@ -23,6 +37,8 @@ class Container:
         Container constructor
         """
         self.container = container
+        self.layer_errors = []
+        self.failed_layers = []
 
     def get_props(self):
         """
@@ -73,13 +89,14 @@ class Container:
                                 lastmod=moddate(self.container)
                             ))
 
-                        except (AttributeError, KeyError) as ke:
-                            print(f'Error: {ke} - Layer {lyr} has no Coordinate Reference System.')
+                        except (AttributeError, KeyError, fiona.errors.DriverError) as e:
+                            self.layer_errors.append(f"{datetime.now().strftime('%Y-%m-%dT%H:%M:%S')} - {e} - Could not process: {ln} | {self.container}")
+                            self.failed_layers.append(f'{self.container} | {ln}')
                             pass
 
-                except FileNotFoundError:
-                    print(f'File {self.container} not found or inaccessible.  Skipping...')
-                    pass
+                except FileNotFoundError as e:
+                    self.layer_errors.append(f"{datetime.now().strftime('%Y-%m-%dT%H:%M:%S')} - FileNotFound - {e}")
+                    return None
 
         elif ext in ['kml', 'kmz']:  # it's a kml file
             dt = 'KML'
@@ -102,10 +119,11 @@ class Container:
                 ))
 
             except Exception as e:
-                print(f"Error: {e} - KML {self.container} has no boundary properties.")
-                pass
+                return None
 
-        return feats
+        return {'feats': feats,
+                'errors': self.layer_errors,
+                'failed_layers': self.failed_layers}
 
 
 class Exif(object):
@@ -184,8 +202,7 @@ class Exif(object):
                                           nativecrs=4326,
                                           lastmod=moddate(self.img_path))
 
-        except Exception as e:
-            print(f"Problem getting GPS info from {self.img_path}: {e}")
+        except Exception:
             return None
 
 
@@ -260,8 +277,7 @@ class Lidar:
             )
 
         except Exception as e:
-            print(e)
-            pass
+            return None
 
 
 class Raster:
@@ -274,13 +290,6 @@ class Raster:
 
     def _get_raster_extents(self):
         pass
-
-    @staticmethod
-    def _to_wgs84(native_epsg, bounds):
-        proj = pyproj.Transformer.from_crs(native_epsg, 4326, always_xy=True)
-        min_x, min_y = proj.transform(bounds.left, bounds.bottom)
-        max_x, max_y = proj.transform(bounds.right, bounds.top)
-        return min_x, min_y, max_x, max_y
 
     def get_props(self):
         ext = Raster._get_file_extension(self)
@@ -316,10 +325,8 @@ class Raster:
                                                   path=os.path.split(self.raster_file)[0],
                                                   nativecrs=r.crs.to_epsg(),
                                                   lastmod=moddate(self.raster_file))
-                except Exception as e:
+                except Exception:
                     try:
-                        filename = None
-
                         ds = gdal.Open(self.raster_file)
                         md = ds.GetMetadata()
                         filename = md.get('NITF_FTITLE', os.path.split(self.raster_file)[1])
@@ -346,9 +353,8 @@ class Raster:
                                                           lastmod=moddate(self.raster_file))
 
                     except Exception as e:
-                        print(f'{e}: Unable to open {self.raster_file} even with GDAL, giving up...')
                         return None
-        except Exception:
+        except Exception as e:
             return None
 
 
@@ -381,8 +387,7 @@ class Shapefile:
                                       lastmod=moddate(self.shp))
 
         except Exception as e:
-            print(f'{e}: Problem reading shapefile to geodataframe.')
-            return None
+            return e
 
 
 # static methods
@@ -406,6 +411,10 @@ def dms_to_dd(coords):
         dd_lon = 0 - dd_lon
 
     return dd_lat, dd_lon
+
+
+def get_centroid(geom):
+    return geom.centroid
 
 
 def get_geojson_record(geom, datatype, fname, path, nativecrs, lastmod, img_popup=None):
@@ -469,27 +478,23 @@ def kmlextents(kmlfile):
                                         x, y, z = i.split(',')
                                         xf.append(float(x))
                                         yf.append(float(y))
-                                except Exception as e:
-                                    print(f'{e}... trying something else')
+                                except Exception:
                                     try:
                                         print(c.split(','))
                                         x, y, z = c.split(',')
                                         xf.append(float(x))
                                         yf.append(float(y))
 
-                                    except Exception as e:
-                                        print(f'{e}... that didnt work either')
+                                    except Exception:
                                         pass
 
-                        except Exception as e:
-                            print(f'{e}...something in inner loop failed...')
+                        except Exception:
                             pass
-                except Exception as e:
-                    print(f'{e}...something in inner loop failed...')
+
+                except Exception:
                     pass
 
-        except Exception as e:
-            print(f'{e}: Could not parse this KML data.')
+        except Exception:
             pass
 
     if len(xf) > 0 and len(yf) > 0:
