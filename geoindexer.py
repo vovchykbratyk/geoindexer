@@ -1,5 +1,9 @@
+from area import area
+from collections import OrderedDict
 from datetime import datetime
 import fiona
+from fiona.crs import from_epsg
+import geopandas as gpd
 from handlers import Container, Exif, Lidar, Log, Raster, Shapefile
 import json
 import os
@@ -88,7 +92,7 @@ class GeoIndexer:
                         cf = Container(f).get_props()
                         for feat in cf['feats']:
                             if feat:
-                                polygons.append(json.loads(feat))
+                                polygons.append(feat)
                                 stats['container_layers'] += 1
                             else:
                                 self.errors.append(f'{now()} - Problem processing layer {feat} in {f}')
@@ -114,7 +118,7 @@ class GeoIndexer:
                     try:
                         lf = Lidar(f).get_props()
                         if lf:
-                            polygons.append(json.loads(lf))
+                            polygons.append(lf)
                             stats['lidar_point_clouds'] += 1
                         else:
                             self.errors.append(f'{now()} - Problem processing Lidar file {f}')
@@ -127,7 +131,7 @@ class GeoIndexer:
                     try:
                         feat = Raster(f).get_props()
                         if feat:
-                            polygons.append(json.loads(feat))
+                            polygons.append(feat)
                             stats['rasters'] += 1
                         else:
                             self.errors.append(f'{now()} - Problem accessing Raster {f}')
@@ -141,7 +145,7 @@ class GeoIndexer:
                     try:
                         feat = Shapefile(f).get_props()
                         if feat:
-                            polygons.append(json.loads(feat))
+                            polygons.append(feat)
                             stats['shapefiles'] += 1
                         else:
                             self.errors.append(f'{now()} - Problem accessing Shapefile {f}')
@@ -199,3 +203,87 @@ class GeoIndexer:
         if filepath:
             return os.path.splitext(os.path.split(filepath)[1])[1][1:].lower()
         return None
+
+    @staticmethod
+    def geojson_container():
+        return {'type': 'FeatureCollection',
+                'features': []}
+
+    @staticmethod
+    def get_schema(img_popup=False):
+        if img_popup:
+            return {'geometry': 'Point',
+                    'properties': OrderedDict([
+                        ('dataType', 'str'),
+                        ('fname', 'str'),
+                        ('path', 'str'),
+                        ('img_popup', 'str'),
+                        ('native_crs', 'int'),
+                        ('lastmod', 'str')])}
+        return {'geometry': 'Polygon',
+                'properties': OrderedDict([
+                    ('path', 'str'),
+                    ('lastmod', 'str'),
+                    ('fname', 'str'),
+                    ('dataType', 'str'),
+                    ('native_crs', 'int')])}
+
+    @staticmethod
+    def to_geopackage(features: dict, path: str, scoped=True):
+        """
+        Outputs to a geopackage container, with different layers of polygons based on size:
+        -- lv0: >= 175,000,000
+        -- lv1: >= 35,000,000 < 175,000,000
+        -- lv2: >= 5,000,000 < 35,000,000
+        -- lv3: >= 1,000,000, < 5,000,000
+        -- lv4: >= 500,000, < 1,000,000
+        -- lv5: >= 100,000, < 500,000
+        -- lv6: >= 50,000, < 100,000
+        -- lv7: > 0, < 50,000
+        """
+        driver = "GPKG"
+
+        if scoped:
+
+            levels = [GeoIndexer.geojson_container() for i in range(7)]
+            layers = {'level_00': GeoIndexer.geojson_container(),
+                      'level_01': GeoIndexer.geojson_container(),
+                      'level_02': GeoIndexer.geojson_container(),
+                      'level_03': GeoIndexer.geojson_container(),
+                      'level_04': GeoIndexer.geojson_container(),
+                      'level_05': GeoIndexer.geojson_container(),
+                      'level_06': GeoIndexer.geojson_container()}
+
+            for f in features['features']:
+                feat_area = float(area(f['geometry']) / 1000000)
+                if feat_area >= 175000000:  # lv0, world
+                    layers['level_00']['features'].append(f)
+                elif 35000000 <= feat_area < 175000000:
+                    layers['level_01']['features'].append(f)
+                elif 5000000 <= feat_area < 35000000:
+                    layers['level_02']['features'].append(f)
+                elif 1000000 <= feat_area < 5000000:
+                    layers['level_03']['features'].append(f)
+                elif 500000 <= feat_area < 1000000:
+                    layers['level_04']['features'].append(f)
+                elif 100000 <= float(feat_area) < 500000:
+                    layers['level_05']['features'].append(f)
+                elif 0 < float(feat_area) < 100000:
+                    layers['level_06']['features'].append(f)
+
+            for k, v in layers.items():
+                if len(v['features']) >= 1:
+                    with fiona.open(path, 'w',
+                                    schema=GeoIndexer.get_schema(),
+                                    driver=driver,
+                                    crs=from_epsg(4326),
+                                    layer=k) as outlyr:
+                        outlyr.writerecords(v['features'])
+                        print(f'wrote layer {k}:')
+                        print(f'{json.dumps(v)}')
+
+                    # gdf = gpd.GeoDataFrame.from_features(v)
+                    # gdf.crs = 'EPSG:4326'
+                    # gdf.to_file(path, driver=driver, layer=k)
+
+            return True
