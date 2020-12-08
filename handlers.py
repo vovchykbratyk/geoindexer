@@ -5,6 +5,7 @@ import geopandas as gpd
 import fiona
 import json
 import os
+from osgeo import ogr, osr
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 import pyproj
@@ -80,14 +81,15 @@ class Container:
                                 [minx, maxy]
                             ])
 
-                            feats.append(get_geojson_record(
-                                geom=boundary,
-                                datatype=dt,
-                                fname=ln,
-                                path=self.container,
-                                nativecrs=lyr_crs,
-                                lastmod=moddate(self.container)
-                            ))
+                            if boundary.area > 0.0:
+                                feats.append(get_geojson_record(
+                                    geom=boundary,
+                                    datatype=dt,
+                                    fname=ln,
+                                    path=self.container,
+                                    nativecrs=lyr_crs,
+                                    lastmod=moddate(self.container)
+                                ))
 
                         except (AttributeError, KeyError, fiona.errors.DriverError) as e:
                             self.layer_errors.append(f"{datetime.now().strftime('%Y-%m-%dT%H:%M:%S')} - {e} - Could not process: {ln} | {self.container}")
@@ -118,7 +120,7 @@ class Container:
                     lastmod=moddate(self.container)
                 ))
 
-            except Exception as e:
+            except Exception:
                 return None
 
         return {'feats': feats,
@@ -365,12 +367,16 @@ class Shapefile:
 
     def get_props(self):
         try:
-            gdf = gpd.read_file(self.shp)
-            org_crs = int(str(gdf.crs).split(':')[1])
+            driver = ogr.GetDriverByName('ESRI Shapefile')
+            sf = driver.Open(self.shp)
+            lyr = sf.GetLayer()
+            org_crs = lyr.GetSpatialRef()
+            org_crs = int(org_crs.GetAttrValue('AUTHORITY', 1))
+
             if org_crs != 4326:
-                minx, miny, maxx, maxy = to_wgs84(org_crs, gdf.geometry.total_bounds)
+                minx, maxx, miny, maxy = to_wgs84(org_crs, lyr.GetExtent())
             else:
-                minx, miny, maxx, maxy = gdf.geometry.total_bounds
+                minx, maxx, miny, maxy = lyr.GetExtent()
 
             boundary = Polygon([
                 [minx, miny],
@@ -419,26 +425,50 @@ def get_centroid(geom):
 
 def get_geojson_record(geom, datatype, fname, path, nativecrs, lastmod, img_popup=None):
     if img_popup:
-        return json.dumps({"type": "Feature",
-                           "geometry": mapping(geom),
-                           "properties": OrderedDict([
-                               ("dataType", datatype),
-                               ("fname", fname),
-                               ("path", f'file:///{path}'),
-                               ("img_popup", f'file:///{img_popup}'),
-                               ("native_crs", nativecrs),
-                               ("lastmod", lastmod)
-                           ])})
+        return {"type": "Feature",
+                "geometry": mapping(geom),
+                "properties": OrderedDict([
+                    ("dataType", datatype),
+                    ("fname", fname),
+                    ("path", f'file:///{path}'),
+                    ("img_popup", f'file:///{img_popup}'),
+                    ("native_crs", nativecrs),
+                    ("lastmod", lastmod)
+                ])}
     else:
-        return json.dumps({"type": "Feature",
-                           "geometry": mapping(geom),
-                           "properties": OrderedDict([
-                               ("dataType", datatype),
-                               ("fname", fname),
-                               ("path", f'file:///{path}'),
-                               ("native_crs", nativecrs),
-                               ("lastmod", lastmod)
-                           ])})
+        return {"type": "Feature",
+                "geometry": mapping(geom),
+                "properties": OrderedDict([
+                    ("dataType", datatype),
+                    ("fname", fname),
+                    ("path", f'file:///{path}'),
+                    ("native_crs", nativecrs),
+                    ("lastmod", lastmod)
+                ])}
+
+
+# def get_geojson_record(geom, datatype, fname, path, nativecrs, lastmod, img_popup=None):
+#     if img_popup:
+#         return json.dumps({"type": "Feature",
+#                            "geometry": mapping(geom),
+#                            "properties": OrderedDict([
+#                                ("dataType", datatype),
+#                                ("fname", fname),
+#                                ("path", f'file:///{path}'),
+#                                ("img_popup", f'file:///{img_popup}'),
+#                                ("native_crs", nativecrs),
+#                                ("lastmod", lastmod)
+#                            ])})
+#     else:
+#         return json.dumps({"type": "Feature",
+#                            "geometry": mapping(geom),
+#                            "properties": OrderedDict([
+#                                ("dataType", datatype),
+#                                ("fname", fname),
+#                                ("path", f'file:///{path}'),
+#                                ("native_crs", nativecrs),
+#                                ("lastmod", lastmod)
+#                            ])})
 
 
 def kmlextents(kmlfile):
