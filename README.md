@@ -20,44 +20,33 @@ This project has been a learning experience for me, eventually I will sit down a
 in /arcpy/ there are some methods i'm testing using Esri's `arcpy` libraries, but at this point I don't rely on them for anything.
 
 ## example usage
-Here is a simple example using GeoIndexer with GeoPandas to discover and construct coverage geometry for GeoPackage layers, File Geodatabase layers, Lidar point clouds, JPEG images, TIFF rasters and NITF rasters, outputting the coverage to a GeoPackage layer.
+Here is a simple example using GeoIndexer to discover and construct coverage geometry for GeoPackage layers, File Geodatabase layers, Lidar point clouds, JPEG images, TIFF rasters and NITF rasters, outputting the coverage to a set of GeoPackage layers for various coverage scales.
 ```
 from geoindexer import GeoCrawler, GeoIndexer
-import geopandas as gpd
 
 
 if __name__ == '__main__':
-    
-    # Setup parameters
-    searchpath = "path/to/data"
+
+    searchpath = "C:/path/to/data"
     ftypes = ['gpkg', 'kml', 'kmz', 'jpg',
               'jpeg', 'las', 'laz', 'tif',
               'tiff', 'ntf', 'nitf', 'dt0',
               'dt1', 'dt2', 'shp', 'gdb']
-    logpath = "path/to/log"
+    logpath = "C:/Temp"
 
-    # Discover results and get their coverage extents
     search = GeoCrawler(searchpath, ftypes).get_file_list()
     results = GeoIndexer(search).get_extents(logging=logpath)
 
-    # Split out the results to do things with them.
-    cvg_areas = results[0]  # this is the geojson object
-    statistics = results[1]  # these are various reporting stats
-    failures = results[2]  # this is a list of files/layers that failed just in case
+    # Split out the results to do stuff with them
+    cvg_areas = results[0]
+    statistics = results[1]
+    failures = results[2]
 
-    # Put it in a GeoDataframe
-    gdf = gpd.GeoDataFrame.from_features(cvg_areas['features'])
+    # Output it as a GeoPackage
+    gpkg = 'C:/Temp/gpkg_test_fiona.gpkg'
+    areas = GeoIndexer.to_geopackage(cvg_areas,
+                                     path=gpkg)
 
-    # Set up a geopackage object to write it out
-    gpkg_out = "C:/Temp/coverage_new.gpkg"
-    driver = "GPKG"
-
-    points = gdf.copy()
-    points['geometry'] = points['geometry'].centroid  # Create a set of center points, helpful with very dense data
-    points.to_file(gpkg_out, layer="cvg_centroids", driver=driver)
-    gdf.to_file(gpkg_out, layer="cvg_original", driver=driver)
-
-    # Now report some optional statistics
     print('--------------------------')
     print('--------STATISTICS--------')
     print('--------------------------')
