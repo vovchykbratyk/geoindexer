@@ -3,12 +3,19 @@
 GeoIndexer is intended to help people with large amounts of uncatalogued spatial data to discover and catalogue it spatially.  It often happens in large organizations where a NAS/SAN might get stuffed with content and nobody really has a good idea of what data covers what locations on the earth.  GeoIndexer can find and represent these holdings by either points (discrete locations) or polygons (coverage extents) that can be overlaid on a map and used to quickly locate and use the asset.
 
 ## data types supported
-1. Raster (TIFF, DTED, NITF, GeoPackage raster layers)
+1. Raster (TIFF, DTED, NITF, maybe .jp2 - more testing is needed)
 2. Vector (SHP, containerized content such as Esri feature classes, GeoPackage layers, KML layers)
 3. Lidar (.las, .laz)
-4. Web images (JPEG, and PNG... theoretically)
-5. *Under development* - Other containerized content (valid GeoJSON files, OpenStreetMap Planet Binary Format, virtual raster tables)
-6. *Future plans* - Explicit/implicit location parsing in common document formats (.docx, .odt, .txt, .pdf)
+4. Web images (JPEG, and - theoretically - PNG)
+
+#### under development
+* valid GeoJSON files
+* OpenStreetMap Planet Binary Format (.pbf) files
+* optional convex hull output
+
+#### future plans
+* explicit/implicit location parsing in common document formats (.docx, .odt, .txt, .pdf)
+* containerized raster layers (GeoPackaged rasters, virtual raster tables)
 
 ## installation
 `git clone https://github.com/vovchykbratyk/geoindexer.git`
