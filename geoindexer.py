@@ -3,7 +3,6 @@ from collections import OrderedDict
 from datetime import datetime
 import fiona
 from fiona.crs import from_epsg
-import geopandas as gpd
 from handlers import Container, Exif, Lidar, Log, Raster, Shapefile
 import json
 import os
@@ -12,8 +11,10 @@ import sys
 from tqdm import tqdm
 
 
-def now():
-    return datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+def now(iso8601=True):
+    if iso8601:
+        return datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+    return datetime.now().strftime('%Y%m%dT%H%M%S')
 
 
 class GeoCrawler:
@@ -245,7 +246,6 @@ class GeoIndexer:
 
         if scoped:
 
-            levels = [GeoIndexer.geojson_container() for i in range(7)]
             layers = {'level_00': GeoIndexer.geojson_container(),
                       'level_01': GeoIndexer.geojson_container(),
                       'level_02': GeoIndexer.geojson_container(),
@@ -255,21 +255,24 @@ class GeoIndexer:
                       'level_06': GeoIndexer.geojson_container()}
 
             for f in features['features']:
-                feat_area = float(area(f['geometry']) / 1000000)
-                if feat_area >= 175000000:  # lv0, world
-                    layers['level_00']['features'].append(f)
-                elif 35000000 <= feat_area < 175000000:
-                    layers['level_01']['features'].append(f)
-                elif 5000000 <= feat_area < 35000000:
-                    layers['level_02']['features'].append(f)
-                elif 1000000 <= feat_area < 5000000:
-                    layers['level_03']['features'].append(f)
-                elif 500000 <= feat_area < 1000000:
-                    layers['level_04']['features'].append(f)
-                elif 100000 <= float(feat_area) < 500000:
-                    layers['level_05']['features'].append(f)
-                elif 0 < float(feat_area) < 100000:
-                    layers['level_06']['features'].append(f)
+                try:
+                    feat_area = float(area(f['geometry']) / 1000000)
+                    if feat_area >= 175000000:  # lv0, world
+                        layers['level_00']['features'].append(f)
+                    elif 35000000 <= feat_area < 175000000:
+                        layers['level_01']['features'].append(f)
+                    elif 5000000 <= feat_area < 35000000:
+                        layers['level_02']['features'].append(f)
+                    elif 1000000 <= feat_area < 5000000:
+                        layers['level_03']['features'].append(f)
+                    elif 500000 <= feat_area < 1000000:
+                        layers['level_04']['features'].append(f)
+                    elif 100000 <= float(feat_area) < 500000:
+                        layers['level_05']['features'].append(f)
+                    elif 0 < float(feat_area) < 100000:
+                        layers['level_06']['features'].append(f)
+                except (TypeError, KeyError, AttributeError):
+                    pass
 
             for k, v in layers.items():
                 if len(v['features']) >= 1:
@@ -279,11 +282,28 @@ class GeoIndexer:
                                     crs=from_epsg(4326),
                                     layer=k) as outlyr:
                         outlyr.writerecords(v['features'])
-                        print(f'wrote layer {k}:')
-                        print(f'{json.dumps(v)}')
+                        # print(f'wrote layer {k}:')
+                        # print(f'{json.dumps(v)}')
 
+                    # Uncomment below to use geopandas instead of fiona
+                    # import geopandas as gpd
                     # gdf = gpd.GeoDataFrame.from_features(v)
                     # gdf.crs = 'EPSG:4326'
                     # gdf.to_file(path, driver=driver, layer=k)
 
             return True
+
+        else:
+            layername = f"coverages_{now(iso8601=False)}"
+            with fiona.open(path, 'w',
+                            schema=GeoIndexer.get_schema(),
+                            driver=driver,
+                            crs=from_epsg(4326),
+                            layer=layername) as outlyr:
+                outlyr.writerecords(features['features'])
+
+            # Uncomment below to use geopandas instead of fiona
+            # import geopandas as gpd
+            # gdf = gpd.GeoDataFrame.from_features(features)
+            # gdf.crs = 'EPSG:4326'
+            # gdf.to_file(path, driver=driver, layer=layername)
