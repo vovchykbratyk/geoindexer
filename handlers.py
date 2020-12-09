@@ -98,7 +98,7 @@ class Container:
 
                 except FileNotFoundError as e:
                     self.layer_errors.append(f"{datetime.now().strftime('%Y-%m-%dT%H:%M:%S')} - FileNotFound - {e}")
-                    return None
+                    pass
 
         elif ext in ['kml', 'kmz']:  # it's a kml file
             dt = 'KML'
@@ -120,7 +120,8 @@ class Container:
                     lastmod=moddate(self.container)
                 ))
 
-            except Exception:
+            except Exception as e:
+                self.layer_errors.append(f"{datetime.now().strftime('%Y-%m-%dT%H:%M:%S')} - {e} - {self.container}")
                 return None
 
         return {'feats': feats,
@@ -323,7 +324,7 @@ class Raster:
 
                         return get_geojson_record(geom=boundary,
                                                   datatype=dt,
-                                                  fname=r.name,
+                                                  fname=os.path.split(self.raster_file)[1],
                                                   path=os.path.split(self.raster_file)[0],
                                                   nativecrs=r.crs.to_epsg(),
                                                   lastmod=moddate(self.raster_file))
@@ -355,7 +356,8 @@ class Raster:
                                                           lastmod=moddate(self.raster_file))
 
                     except Exception as e:
-                        return None
+                        pass
+
         except Exception as e:
             return None
 
