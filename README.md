@@ -16,6 +16,7 @@ GeoIndexer is intended to help people with large amounts of uncatalogued spatial
 #### future plans
 * explicit/implicit location parsing in common document formats (.docx, .odt, .txt, .pdf)
 * containerized raster layers (GeoPackaged rasters, virtual raster tables)
+* explore using Esri's `arcpy` package in a version for ArcGIS users
 
 ## installation
 `git clone https://github.com/vovchykbratyk/geoindexer.git`
@@ -24,8 +25,6 @@ This project has been a learning experience for me, eventually I will sit down a
 
 ### dependencies/requirements
 ```fiona, gdal, geopandas, pdal, PIL, pyproj, rasterio, shapely```
-
-in /arcpy/ there are some methods i'm testing using Esri's `arcpy` libraries, but at this point I don't rely on them for anything.
 
 ## example usage
 Here is a simple example using GeoIndexer to discover and construct coverage geometry for GeoPackage layers, File Geodatabase layers, Lidar point clouds, JPEG images, TIFF rasters and NITF rasters, outputting the coverage to a set of GeoPackage layers for various coverage scales.
