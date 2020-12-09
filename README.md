@@ -1,4 +1,5 @@
 # geoindexer
+![map overview](img/map_overview.png)
 GeoIndexer is intended to help people with large amounts of uncatalogued spatial data to discover and catalogue it spatially.  It often happens in large organizations where a NAS/SAN might get stuffed with content and nobody really has a good idea of what data covers what locations on the earth.  GeoIndexer can find and represent these holdings by either points (discrete locations) or polygons (coverage extents) that can be overlaid on a map and used to quickly locate and use the asset.
 
 ## data types supported
@@ -65,6 +66,12 @@ if __name__ == '__main__':
 
 
 ```
+This will give you output like the following:
+![console output example](img/console_output.png)
+
+### Map output
+![map output](img/map_overview.png)
+![attribute output](img/attribute_table_output.png)
 
 ## licensing
 GeoIndexer relies on Free and Open Source (FOSS) libraries and any/all restrictions attached to those libraries are
