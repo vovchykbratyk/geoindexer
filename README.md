@@ -72,8 +72,3 @@ This will give you output like the following:
 ### Map output
 ![map output](img/map_overview.png)
 ![attribute output](img/attribute_table_output.png)
-
-## licensing
-GeoIndexer relies on Free and Open Source (FOSS) libraries and any/all restrictions attached to those libraries are
-inherited. As I am new to this, I am also still sort of figuring out licensing and will update this as I go.
-Any leverage of the `arcpy` library, obviously, requires an ArcGIS license of some sort.
