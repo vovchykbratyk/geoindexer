@@ -1,3 +1,5 @@
+"""Documentation to follow"""
+
 from area import area
 from collections import OrderedDict
 from datetime import datetime
