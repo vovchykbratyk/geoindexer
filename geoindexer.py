@@ -162,7 +162,7 @@ class GeoIndexer:
                     extents['features'].append(poly)
             if len(points) > 0:
                 for point in points:
-                    extents['features'].append(points)
+                    extents['features'].append(point)
 
             # Summary statistics
             stats['total_processed'] = sum([val for key, val in stats.items()])
