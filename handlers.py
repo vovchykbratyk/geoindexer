@@ -279,7 +279,7 @@ class Lidar:
                 lastmod=moddate(self.lidar_file)
             )
 
-        except Exception as e:
+        except Exception:
             return None
 
 
@@ -355,10 +355,10 @@ class Raster:
                                                           nativecrs=4326,
                                                           lastmod=moddate(self.raster_file))
 
-                    except Exception as e:
+                    except Exception:
                         pass
 
-        except Exception as e:
+        except Exception:
             return None
 
 
