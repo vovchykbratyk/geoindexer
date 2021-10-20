@@ -16,7 +16,8 @@ from tqdm import tqdm
 def now(iso8601=True):
     if iso8601:
         return datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-    return datetime.now().strftime('%Y%m%dT%H%M%S')
+    else:
+        return datetime.now().strftime('%Y%m%dT%H%M%S')
 
 
 class GeoCrawler:
