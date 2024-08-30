@@ -1,6 +1,6 @@
 from collections import OrderedDict
 from datetime import datetime
-import gdal
+from osgeo import gdal
 import geopandas as gpd
 import fiona
 import json
