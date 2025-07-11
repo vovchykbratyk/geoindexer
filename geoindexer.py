@@ -1,312 +1,304 @@
 """Documentation to follow"""
-
-from area import area
 from collections import OrderedDict
 from datetime import datetime
-import fiona
-from fiona.crs import from_epsg
-from handlers import Container, Exif, Lidar, Log, Raster, Shapefile
-import json
-import os
 from pathlib import Path
+from typing import List, Optional, Union, Dict, Any
+import os
 import sys
+import json
+import logging
+
 from tqdm import tqdm
+import fiona
+from fiona.crs import CRS
+
+# Import refactored handlers
+from handlers import Container, Exif, Lidar, Raster, Shapefile, Log
+
+# Set up logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
-def now(iso8601=True):
-    if iso8601:
-        return datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-    else:
-        return datetime.now().strftime('%Y%m%dT%H%M%S')
+# Utility function for current DTG
+def now(iso8601: bool = True) -> str:
+    fmt = "%Y-%m-%dT%H:%M:%S" if iso8601 else "%Y%m%dT%H%M%S"
+    return datetime.now().strftime(fmt)
 
+
+# filetype handler registry
+PROCESSOR_MAP: Dict[str, Any] = {
+    "gdb": Container,
+    "gpkg": Container,
+    "db": Container,
+    "sqlite": Container,
+    "jpg": Exif,
+    "jpeg": Exif,
+    "laz": Lidar,
+    "las": Lidar,
+    "tif": Raster,
+    "tiff": Raster,
+    "ntf": Raster,
+    "nitf": Raster,
+    "dt0": Raster,
+    "dt1": Raster,
+    "dt2": Raster,
+    "shp": Shapefile,
+}
+
+import concurrent.futures
 
 class GeoCrawler:
+    def __init__(self, path: str, types: List[str]):
+        self.path = Path(path)
+        self.types = set(t.lower() for t in types)  # faster lookup
 
-    def __init__(self, path, types):
-        """
-        GeoCrawler constructor
+    def get_file_list(self, recursive: bool = True) -> List[str]:
+        """Returns list of files matching extensions (case-insensitive)."""
+        if not recursive:
+            return [
+                str(p.resolve())
+                for p in self.path.iterdir()
+                if p.is_file() and p.suffix[1:].lower() in self.types
+            ]
+        return self._crawl_parallel()
 
-        :param path: The path to be crawled
-        :type path: str
-        :param types: List of file extensions
-        :type types: list
-        """
-        self.path = path
-        self.types = types
+    def _crawl_parallel(self, max_workers: int = os.cpu_count() or 4) -> List[str]:
+        matches = []
 
-    def get_file_list(self, recursive=True):
-        """
-        Searches path (default recursive) for filetypes and returns list of matches.
-
-        :param recursive: Traverse directories recursively (default: True)
-        :type recursive: bool
-        :return: list
-        """
-        if recursive:
+        def crawl_dir(path: Path) -> List[str]:
+            files = []
             try:
-                return [str(p.resolve()) for p in Path(self.path).glob("**/*") if p.suffix[1:] in self.types]
-            except PermissionError:
+                for entry in os.scandir(path):
+                    if entry.is_file():
+                        ext = Path(entry.name).suffix[1:].lower()
+                        if ext in self.types:
+                            files.append(str(Path(entry.path).resolve()))
+                    elif entry.is_dir(follow_symlinks=False):
+                        subdir = Path(entry.path)
+                        files.extend(crawl_dir(subdir))  # serial for now
+            except (PermissionError, FileNotFoundError):
                 pass
-        else:
-            try:
-                return [str(p.resolve()) for p in Path(self.path).glob("*") if p.suffix[1:] in self.types]
-            except PermissionError:
-                pass
+            return files
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(crawl_dir, self.path)]
+            for f in concurrent.futures.as_completed(futures):
+                try:
+                    matches.extend(f.result())
+                except Exception as e:
+                    logger.warning(f"Directory crawl failed: {e}")
+
+        return matches
 
 
 class GeoIndexer:
-
-    def __init__(self, file_list):
-        """
-        GeoIndexer constructor
-        """
+    def __init__(self, file_list: List[str]):
         self.file_list = file_list
-        self.errors = []
-        self.failures = {'files': [],
-                         'layers': []}
+        self.errors: List[str] = []
+        self.failures = {
+            "files": [],
+            "layers": []
+        }
 
-    def get_extents(self, logging=None):
+    @staticmethod
+    def get_extension(filepath: str) -> Optional[str]:
+        return Path(filepath).suffix.lower()[1:] if filepath else None
 
-        # Get total number of datasets to process, including geodatabase layers
-        if len(self.file_list) > 0:
-
-            to_process = 0
-            for f in self.file_list:
-                to_process += GeoIndexer.get_layer_num(self, f)
-
-            # Set up the output
-            points = []
-            polygons = []
-            extents = {'type': 'FeatureCollection',
-                       'features': []}
-
-            # Set up the report
-            stats = {'container_layers': 0,
-                     'web_images': 0,
-                     'lidar_point_clouds': 0,
-                     'rasters': 0,
-                     'shapefiles': 0}
-
-            # Main iterator
-            for f in tqdm(self.file_list, desc='GeoIndexer progress', total=len(self.file_list), dynamic_ncols=True):
-                fext = GeoIndexer.get_extension(f)
-
-                if fext in ['gdb', 'gpkg', 'db', 'sqlite']:
-                    try:
-                        cf = Container(f).get_props()
-                        for feat in cf['feats']:
-                            if feat:
-                                polygons.append(feat)
-                                stats['container_layers'] += 1
-                            else:
-                                self.errors.append(f'{now()} - Problem processing layer {feat} in {f}')
-                                self.failures['layers'].append(f'{feat} ({f})')
-                        if len(cf['errors']) > 0:
-                            self.errors.append([e for e in cf['errors']])
-                            self.failures['layers'].append([f for f in cf['failed_layers']])
-                    except Exception as e:
-                        self.errors.append(f'{now()} - {e} - [{f}]')
-                        self.failures['files'].append(f)
-                        pass
-
-                elif fext in ['jpg', 'jpeg']:
-                    try:
-                        points.append(Exif(f).get_props())
-                        stats['web_images'] += 1
-                    except Exception as e:
-                        self.errors.append(f'{now()} - {e} - [{f}]')
-                        self.failures['files'].append(f)
-                        pass
-
-                elif fext in ['laz', 'las']:
-                    try:
-                        lf = Lidar(f).get_props()
-                        if lf:
-                            polygons.append(lf)
-                            stats['lidar_point_clouds'] += 1
-                        else:
-                            self.errors.append(f'{now()} - Problem processing Lidar file {f}')
-                            self.failures['files'].append(f)
-                    except Exception as e:
-                        self.errors.append(f'{now()} - {e} - [{f}]')
-                        pass
-
-                elif fext in ['tiff', 'tif', 'ntf', 'nitf', 'dt0', 'dt1', 'dt2']:
-                    try:
-                        feat = Raster(f).get_props()
-                        if feat:
-                            polygons.append(feat)
-                            stats['rasters'] += 1
-                        else:
-                            self.errors.append(f'{now()} - Problem accessing Raster {f}')
-                            self.failures['files'].append(f)
-                    except Exception as e:
-                        self.errors.append(f'{now()} - {e} - [{f}]')
-                        self.failures['files'].append(f)
-                        pass
-
-                elif fext == 'shp':
-                    try:
-                        feat = Shapefile(f).get_props()
-                        if feat:
-                            polygons.append(feat)
-                            stats['shapefiles'] += 1
-                        else:
-                            self.errors.append(f'{now()} - Problem accessing Shapefile {f}')
-                            self.failures['files'].append(f)
-                    except Exception as e:
-                        self.errors.append(f'{now()} - {e} - [{f}]')
-                        self.failures['files'].append(f)
-                        pass
-
-            # Assemble the GeoJSON object
-            if len(polygons) > 0:
-                for poly in polygons:
-                    extents['features'].append(poly)
-            if len(points) > 0:
-                for point in points:
-                    extents['features'].append(point)
-
-            # Summary statistics
-            stats['total_processed'] = sum([val for key, val in stats.items()])
-            stats['total_datasets'] = to_process
-            stats['success_rate'] = round(
-                ((float(stats.get('total_processed', 0)) / float(stats.get('total_datasets', 0))) * 100), 2)
-
-            # Output log if true
-            if logging:
-                log = Log(self.errors)
-                logname = log.to_file(logging)
-                stats['logfile'] = f'file:///{str(os.path.join(logging, logname))}'.replace("\\", "/")
-
-            return extents, stats, self.failures
-
-        else:
-            sys.exit('No files found to process.')
-
-    def get_layer_num(self, filepath: str):
-        """
-        Get the number of layers within a container, if the file is a container and can be read by fiona.
-        Otherwise, return 0 (if the container cannot be read) or 1 (if the file is not a container).
-
-        :return: int
-        """
-        extension = GeoIndexer.get_extension(filepath)
-        if extension in ['gdb', 'gpkg', 'db', 'sqlite']:
+    def get_layer_num(self, filepath: str) -> int:
+        """Returns number of layers in a container, or 1 for non-container files."""
+        ext = self.get_extension(filepath)
+        if ext in {"gdb", "gpkg", "db", "sqlite"}:
             try:
-                numlayers = len(fiona.listlayers(filepath))
-                return numlayers
+                return len(fiona.listlayers(filepath))
             except Exception as e:
-                self.errors.append(f'{now()} - {e} - [{filepath}]')
+                self.errors.append(f"{now()} - {e} - [{filepath}]")
                 return 0
-        else:
-            return 1
+        return 1
 
     @staticmethod
-    def get_extension(filepath: str):
-        if filepath:
-            return os.path.splitext(os.path.split(filepath)[1])[1][1:].lower()
-        return None
+    def geojson_container() -> dict:
+        return {
+            "type": "FeatureCollection",
+            "features": []
+        }
 
     @staticmethod
-    def geojson_container():
-        return {'type': 'FeatureCollection',
-                'features': []}
-
-    @staticmethod
-    def get_schema(img_popup=False):
+    def get_schema(img_popup: bool = False) -> dict:
         if img_popup:
-            return {'geometry': 'Point',
-                    'properties': OrderedDict([
-                        ('dataType', 'str'),
-                        ('fname', 'str'),
-                        ('path', 'str'),
-                        ('img_popup', 'str'),
-                        ('native_crs', 'int'),
-                        ('lastmod', 'str')])}
-        return {'geometry': 'Polygon',
-                'properties': OrderedDict([
-                    ('path', 'str'),
-                    ('lastmod', 'str'),
-                    ('fname', 'str'),
-                    ('dataType', 'str'),
-                    ('native_crs', 'int')])}
+            return {
+                "geometry": "Point",
+                "properties": OrderedDict([
+                    ("dataType", "str"),
+                    ("fname", "str"),
+                    ("path", "str"),
+                    ("img_popup", "str"),
+                    ("native_crs", "int"),
+                    ("lastmod", "str")
+                ])
+            }
+        return {
+            "geometry": "Polygon",
+            "properties": OrderedDict([
+                ("path", "str"),
+                ("lastmod", "str"),
+                ("fname", "str"),
+                ("dataType", "str"),
+                ("native_crs", "int")
+            ])
+        }
+    
+    def _process_file(
+        self,
+        filepath: str,
+        polygons: List[dict],
+        points: List[dict],
+        stats: dict
+    ) -> None:
+        ext = self.get_extension(filepath)
+        processor_cls = PROCESSOR_MAP.get(ext)
+
+        if not processor_cls:
+            return
+
+        try:
+            result = processor_cls(filepath).get_props()
+
+            if not result:
+                raise ValueError("Processor returned None")
+
+            if isinstance(result, dict) and result.get("geometry", {}).get("type") == "Point":
+                points.append(result)
+            else:
+                if ext in {"gdb", "gpkg", "db", "sqlite"} and "feats" in result:
+                    polygons.extend(result["feats"])
+                    stats["container_layers"] += len(result["feats"])
+                    if result.get("errors"):
+                        self.errors.extend(result["errors"])
+                        self.failures["layers"].extend(result.get("failed_layers", []))
+                else:
+                    polygons.append(result)
+                    stats[self._stat_key(ext)] += 1
+
+        except Exception as e:
+            self.errors.append(f"{now()} - {e} - [{filepath}]")
+            self.failures["files"].append(filepath)
 
     @staticmethod
-    def to_geopackage(features: dict, path: str, scoped=True):
+    def _stat_key(ext: str) -> str:
+        return {
+            "jpg": "web_images",
+            "jpeg": "web_images",
+            "laz": "lidar_point_clouds",
+            "las": "lidar_point_clouds",
+            "tif": "rasters",
+            "tiff": "rasters",
+            "ntf": "rasters",
+            "nitf": "rasters",
+            "dt0": "rasters",
+            "dt1": "rasters",
+            "dt2": "rasters",
+            "shp": "shapefiles"
+        }.get(ext, "unknown")
+    
+    def get_extents(self, logging: Optional[str] = None):
+        if not self.file_list:
+            logger.warning("No files to process.")
+            return None
+
+        # Estimate total datasets (includes container sublayers)
+        total_datasets = sum(self.get_layer_num(f) for f in self.file_list)
+
+        # Setup
+        polygons, points = [], []
+        extents = self.geojson_container()
+        stats = {
+            "container_layers": 0,
+            "web_images": 0,
+            "lidar_point_clouds": 0,
+            "rasters": 0,
+            "shapefiles": 0
+        }
+
+        for f in tqdm(self.file_list, desc="GeoIndexer progress", dynamic_ncols=True):
+            self._process_file(f, polygons, points, stats)
+
+        extents["features"].extend(polygons + points)
+
+        stats["total_processed"] = sum(stats.values())
+        stats["total_datasets"] = total_datasets
+        stats["success_rate"] = round(
+            (stats["total_processed"] / total_datasets * 100.0), 2
+        ) if total_datasets else 0.0
+
+        if logging:
+            log = Log(self.errors)
+            logname = log.to_file(logging)
+            stats["logfile"] = f"file:///{Path(logging, logname).as_posix()}"
+
+        return extents, stats, self.failures
+    
+    @staticmethod
+    def to_geopackage(features: dict, output_path: str, scoped: bool = True) -> bool:
         """
-        Outputs to a geopackage container, with different layers of polygons based on size:
-        -- lv0: >= 175,000,000
-        -- lv1: >= 35,000,000 < 175,000,000
-        -- lv2: >= 5,000,000 < 35,000,000
-        -- lv3: >= 1,000,000, < 5,000,000
-        -- lv4: >= 500,000, < 1,000,000
-        -- lv5: >= 100,000, < 500,000
-        -- lv6: >= 50,000, < 100,000
-        -- lv7: > 0, < 50,000
+        Writes features to a GeoPackage file, split into size-based layers if scoped is True.
         """
+        def layer_name_for_area(km2: float) -> str:
+            if km2 >= 175_000_000: return "level_00"
+            elif km2 >= 35_000_000: return "level_01"
+            elif km2 >= 5_000_000: return "level_02"
+            elif km2 >= 1_000_000: return "level_03"
+            elif km2 >= 500_000: return "level_04"
+            elif km2 >= 100_000: return "level_05"
+            elif km2 >= 50_000: return "level_06"
+            return "level_07"
+
         driver = "GPKG"
 
         if scoped:
-
-            layers = {'level_00': GeoIndexer.geojson_container(),
-                      'level_01': GeoIndexer.geojson_container(),
-                      'level_02': GeoIndexer.geojson_container(),
-                      'level_03': GeoIndexer.geojson_container(),
-                      'level_04': GeoIndexer.geojson_container(),
-                      'level_05': GeoIndexer.geojson_container(),
-                      'level_06': GeoIndexer.geojson_container()}
-
-            for f in features['features']:
+            layers = {f"level_0{i}": GeoIndexer.geojson_container() for i in range(7)}
+            for feat in features["features"]:
                 try:
-                    feat_area = float(area(f['geometry']) / 1000000)
-                    if feat_area >= 175000000:  # lv0, world
-                        layers['level_00']['features'].append(f)
-                    elif 35000000 <= feat_area < 175000000:
-                        layers['level_01']['features'].append(f)
-                    elif 5000000 <= feat_area < 35000000:
-                        layers['level_02']['features'].append(f)
-                    elif 1000000 <= feat_area < 5000000:
-                        layers['level_03']['features'].append(f)
-                    elif 500000 <= feat_area < 1000000:
-                        layers['level_04']['features'].append(f)
-                    elif 100000 <= float(feat_area) < 500000:
-                        layers['level_05']['features'].append(f)
-                    elif 0 < float(feat_area) < 100000:
-                        layers['level_06']['features'].append(f)
-                except (TypeError, KeyError, AttributeError):
-                    pass
+                    from area import area
+                    area_km2 = area(feat["geometry"]) / 1_000_000
+                    layer = layer_name_for_area(area_km2)
+                    layers[layer]["features"].append(feat)
+                except Exception:
+                    continue
 
-            for k, v in layers.items():
-                if len(v['features']) >= 1:
-                    with fiona.open(path, 'w',
-                                    schema=GeoIndexer.get_schema(),
-                                    driver=driver,
-                                    crs=from_epsg(4326),
-                                    layer=k) as outlyr:
-                        outlyr.writerecords(v['features'])
-                        # print(f'wrote layer {k}:')
-                        # print(f'{json.dumps(v)}')
-
-                    # Uncomment below to use geopandas instead of fiona
-                    # import geopandas as gpd
-                    # gdf = gpd.GeoDataFrame.from_features(v)
-                    # gdf.crs = 'EPSG:4326'
-                    # gdf.to_file(path, driver=driver, layer=k)
-
+            for layer, collection in layers.items():
+                if collection["features"]:
+                    with fiona.open(
+                        output_path, 'w',
+                        schema=GeoIndexer.get_schema(),
+                        driver=driver,
+                        crs=CRS.from_epsg(4326),
+                        layer=layer
+                    ) as out:
+                        out.writerecords(collection["features"])
             return True
 
         else:
-            layername = f"coverages_{now(iso8601=False)}"
-            with fiona.open(path, 'w',
-                            schema=GeoIndexer.get_schema(),
-                            driver=driver,
-                            crs=from_epsg(4326),
-                            layer=layername) as outlyr:
-                outlyr.writerecords(features['features'])
-
-            # Uncomment below to use geopandas instead of fiona
-            # import geopandas as gpd
-            # gdf = gpd.GeoDataFrame.from_features(features)
-            # gdf.crs = 'EPSG:4326'
-            # gdf.to_file(path, driver=driver, layer=layername)
+            layer_name = f"coverages_{now(False)}"
+            with fiona.open(
+                output_path, 'w',
+                schema=GeoIndexer.get_schema(),
+                driver=driver,
+                crs=CRS.from_epsg(4326),
+                layer=layer_name
+            ) as out:
+                out.writerecords(features["features"])
+            return True
+        
+    @staticmethod
+    def to_geojson(features: dict, output_path: str) -> bool:
+        """
+        Writes the entire FeatureCollection to a single GeoJSON file.
+        """
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(features, f, indent=2)
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to write GeoJSON to {output_path}: {e}")
+            return False
