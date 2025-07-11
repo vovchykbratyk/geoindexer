@@ -1,4 +1,27 @@
-"""Documentation to follow"""
+"""
+geoindexer.py
+
+Original author: Eric Eagle
+Initial creation: 2020
+
+This script indexes geospatial and location-aware datasets across local or networked
+storage, extracting spatial metadata for storage in GeoJSON or GeoPackage.
+
+The current version includes significant performance, maintainability, and robustness
+improvements implemented with the assistance of OpenAI GPT-4o LLM, used interactively
+to review, modernize, and optimize the codebase.
+
+Key improvements include:
+- Modular and testable handler classes for each supported file type
+- Centralized utility functions for CRS conversion, file handling, and parsing
+- Consistent error handling and logging
+- Reduced computational overhead for large-scale network storage crawling
+
+This script is designed for large-volume indexing tasks in GIS workflows,
+with an emphasis on speed and resilience across large and diverse geospatial
+data.
+"""
+
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
