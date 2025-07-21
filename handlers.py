@@ -1,167 +1,41 @@
-from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
-from zipfile import ZipFile
 import subprocess as sp
-import re
-import os
 import json
 import logging
 
 import fiona
+from fiona import open as fiona_open
+from fiona.crs import from_epsg
 import rasterio
-import pyproj
+from pyproj import CRS as PyCRS
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
-from shapely.geometry import mapping, Point, Polygon
-from osgeo import gdal, ogr, osr
-from pyproj import CRS
+from shapely.geometry import Point, Polygon
+from osgeo import gdal, ogr
 
+from wrenches import (
+    get_geometry,
+    write_features_by_scale,
+    write_features_to_gpkg,
+    moddate,
+    to_wgs84,
+    dms_to_dd,
+    kmlextents,
+    get_geojson_record
+)
 
 # Optional: Configure a simple logger (can be adjusted by caller)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# Shared utility methods
-def moddate(filepath: str) -> str:
-    """Return the ISO 8601-formatted modification timestamp of a file."""
-    try:
-        lm = Path(filepath).stat().st_mtime
-        return datetime.fromtimestamp(lm).strftime('%Y-%m-%dT%H:%M:%S')
-    except Exception as e:
-        logger.warning(f"Failed to get mod time for {filepath}: {e}")
-        return ""
-
-
-def to_wgs84(native_epsg, bounds) -> tuple:
-    """Reprojects bounding box (minx, miny, maxx, maxy) to WGS84 (EPSG:4326)."""
-    try:
-        transformer = pyproj.Transformer.from_crs(native_epsg, 4326, always_xy=True)
-        minx, miny = transformer.transform(bounds[0], bounds[1])
-        maxx, maxy = transformer.transform(bounds[2], bounds[3])
-        return minx, miny, maxx, maxy
-    except Exception as e:
-        logger.warning(f"Reprojection failed for EPSG:{native_epsg}, bounds {bounds}: {e}")
-        return bounds  # Fall back to original bounds
-
-
-def dms_to_dd(coords: str) -> tuple[float, float]:
-    """Converts NITF-style DMS string to decimal degrees."""
-    try:
-        lat_d, lat_m, lat_s = int(coords[0:2]), int(coords[2:4]), int(coords[4:6])
-        lat_dir = coords[6]
-        lon_d, lon_m, lon_s = int(coords[7:10]), int(coords[10:12]), int(coords[12:14])
-        lon_dir = coords[14]
-
-        lat = lat_d + lat_m / 60 + lat_s / 3600
-        lon = lon_d + lon_m / 60 + lon_s / 3600
-        if lat_dir == 'S':
-            lat = -lat
-        if lon_dir == 'W':
-            lon = -lon
-
-        return lat, lon
-    except Exception as e:
-        logger.warning(f"Failed to convert DMS to decimal degrees: {e}")
-        return 0.0, 0.0
-
-
-def openkml(kml_path: str) -> str:
-    """Reads KML text from file."""
-    try:
-        return Path(kml_path).read_text(encoding='utf-8')
-    except Exception as e:
-        logger.warning(f"Failed to read KML file {kml_path}: {e}")
-        return ""
-
-
-def openkmz(kmz_path: str) -> str:
-    """Unzips and reads the first KML file found in a KMZ archive."""
-    try:
-        with ZipFile(kmz_path, 'r') as archive:
-            for name in archive.namelist():
-                if name.lower().endswith('.kml'):
-                    return archive.read(name).decode('utf-8')
-    except Exception as e:
-        logger.warning(f"Failed to extract KML from KMZ {kmz_path}: {e}")
-    return ""
-
-
-def kmlextents(kmlfile: str) -> tuple | None:
-    """Parses KML or KMZ file and extracts bounding box from coordinates."""
-    data = ""
-    if kmlfile.lower().endswith(".kmz"):
-        data = openkmz(kmlfile)
-    elif kmlfile.lower().endswith(".kml"):
-        data = openkml(kmlfile)
-
-    if not data:
-        return None
-
-    # Flatten XML text for regex parsing
-    data = data.replace('\n', '').replace('\r', '').replace('\t', '')
-
-    xf, yf = [], []
-
-    try:
-        xs = re.findall(r"<longitude>(.+?)</longitude>", data)
-        ys = re.findall(r"<latitude>(.+?)</latitude>", data)
-
-        if xs and ys:
-            xf = list(map(float, xs))
-            yf = list(map(float, ys))
-        else:
-            coords = re.findall(r"<coordinates>(.+?)</coordinates>", data)
-            for coord in coords:
-                for pair in coord.strip().split():
-                    try:
-                        lon, lat, *_ = map(float, pair.strip().split(","))
-                        xf.append(lon)
-                        yf.append(lat)
-                    except ValueError:
-                        continue
-    except Exception as e:
-        logger.warning(f"Failed to extract KML extents: {e}")
-
-    if xf and yf:
-        return min(xf), min(yf), max(xf), max(yf)
-    return None
-
-    
-# GeoJSON management
-def get_geojson_record(
-    geom,
-    datatype: str,
-    fname: str,
-    path: str,
-    nativecrs: int,
-    lastmod: str,
-    img_popup: str = None
-) -> dict:
-    """Builds a standard GeoJSON feature record with optional image preview link."""
-    props = OrderedDict([
-        ("dataType", datatype),
-        ("fname", fname),
-        ("path", f"file:///{path}"),
-        ("native_crs", nativecrs),
-        ("lastmod", lastmod)
-    ])
-    if img_popup:
-        props["img_popup"] = f"file:///{img_popup}"
-
-    return {
-        "type": "Feature",
-        "geometry": mapping(geom),
-        "properties": props
-    }
-
-
 class Container:
-    def __init__(self, container_path: str):
+    def __init__(self, container_path: str, convex_hull: bool = False):
         self.container = container_path
         self.layer_errors = []
         self.failed_layers = []
+        self.convex_hull = convex_hull
 
     def get_props(self) -> dict:
         ext = Path(self.container).suffix.lower()[1:]
@@ -176,34 +50,30 @@ class Container:
 
             for layer_name in fiona.listlayers(self.container):
                 try:
-                    with fiona.open(self.container, layer=layer_name) as lyr:
-                        crs_epsg = int(lyr.crs.get('init', 'epsg:4326').split(':')[1]) if lyr.crs else 4326
-                        bounds = lyr.bounds
-                        if crs_epsg != 4326:
-                            minx, miny, maxx, maxy = to_wgs84(crs_epsg, bounds)
-                        else:
-                            minx, miny, maxx, maxy = bounds
+                    geom, crs = get_geometry(
+                        self.container,
+                        convex_hull=self.convex_hull,
+                        layer=layer_name
+                    )
+                    if not geom or not crs:
+                        continue
 
-                        polygon = Polygon([
-                            [minx, miny], [maxx, miny],
-                            [maxx, maxy], [minx, maxy]
-                        ])
+                    epsg_code = PyCRS.from_user_input(crs).to_epsg() or 4326
 
-                        if polygon.is_valid and polygon.area > 0:
-                            feats.append(get_geojson_record(
-                                geom=polygon,
-                                datatype=datatype,
-                                fname=layer_name,
-                                path=self.container,
-                                nativecrs=crs_epsg,
-                                lastmod=moddate(self.container)
-                            ))
+                    if geom.is_valid and geom.area > 0:
+                        feats.append(get_geojson_record(
+                            geom=geom,
+                            datatype=datatype,
+                            fname=layer_name,
+                            path=self.container,
+                            nativecrs=epsg_code,
+                            lastmod=moddate(self.container)
+                        ))
                 except Exception as e:
                     msg = f"{datetime.now().isoformat()} - {e} - {self.container} | {layer_name}"
                     self.layer_errors.append(msg)
                     self.failed_layers.append(f"{self.container} | {layer_name}")
-
-        elif ext in {'kml', 'kmz'}:
+        elif ext in {'kml', 'kmz'}:  # KML/KMZ can also be thought of as a container
             try:
                 bounds = kmlextents(self.container)
                 if bounds:
