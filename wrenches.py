@@ -62,9 +62,9 @@ def _openkmz(kmz_path: str) -> str:
 # Shared utility functions
 def get_geometry(vector_path, convex_hull=False, layer=None):
     """
-    Reads vector geometries from a file and computes either:
-    - A convex hull of all geometries (if use_convex_hull=True)
-    - A bounding box (if use_convex_hull=False)
+    Reads geometry from an object and computes either a bounding box (default)
+    or a convex hull (convex_hull=True) with fallback to minimum bounding geometry
+    if convex hull fails
 
     Returns: (Shapely geometry, CRS as WKT string or dict)
     """
@@ -81,7 +81,15 @@ def get_geometry(vector_path, convex_hull=False, layer=None):
                 return None, None
 
             combined = unary_union(geometries)
-            geom = combined.convex_hull if convex_hull else combined.envelope
+
+            if convex_hull:
+                hull = combined.convex_hull
+                if not isinstance(hull, Polygon):
+                    geom = combined.envelope
+                else:
+                    geom = hull
+            else:
+                geom = combined.envelope
             epsg = PyCRS.from_user_input(crs).to_epsg() or 4326
             return geom, epsg
     except Exception as e:
