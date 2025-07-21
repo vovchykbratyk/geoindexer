@@ -6,47 +6,38 @@ Initial creation: 2020
 
 This script indexes geospatial and location-aware datasets across local or networked
 storage, extracting spatial metadata for storage in GeoJSON or GeoPackage.
-
-The current version includes significant performance, maintainability, and robustness
-improvements implemented with the assistance of OpenAI GPT-4o LLM, used interactively
-to review, modernize, and optimize the codebase.
-
-Key improvements include:
-- Modular and testable handler classes for each supported file type
-- Centralized utility functions for CRS conversion, file handling, and parsing
-- Consistent error handling and logging
-- Reduced computational overhead for large-scale network storage crawling
-
-This script is designed for large-volume indexing tasks in GIS workflows,
-with an emphasis on speed and resilience across large and diverse geospatial
-data.
 """
 
-from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Union, Dict, Any
+from typing import List, Dict, Any
 import os
-import sys
-import json
 import logging
 
 from tqdm import tqdm
-import fiona
-from fiona.crs import CRS
 
 # Import refactored handlers
-from handlers import Container, Exif, Lidar, Raster, Shapefile, Log
+from handlers import (
+    Container,
+    Exif, 
+    Lidar, 
+    Raster, 
+    Shapefile
+)
+
+from wrenches import (
+    write_features_by_scale,
+    write_features_to_gpkg
+)
 
 # Set up logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-# Utility function for current DTG
-def now(iso8601: bool = True) -> str:
-    fmt = "%Y-%m-%dT%H:%M:%S" if iso8601 else "%Y%m%dT%H%M%S"
-    return datetime.now().strftime(fmt)
+# Helper function for current DTG
+def now() -> str:
+    return datetime.now().strftime('%Y%m%dT%H%M%S')
 
 
 # filetype handler registry
@@ -75,6 +66,7 @@ class GeoCrawler:
     def __init__(self, path: str, types: List[str]):
         self.path = Path(path)
         self.types = set(t.lower() for t in types)  # faster lookup
+        self.files = self.get_file_list(self.path)
 
     def get_file_list(self, recursive: bool = True) -> List[str]:
         """Returns list of files matching extensions (case-insensitive)."""
@@ -85,7 +77,7 @@ class GeoCrawler:
                 if p.is_file() and p.suffix[1:].lower() in self.types
             ]
         return self._crawl_parallel()
-
+    
     def _crawl_parallel(self, max_workers: int = os.cpu_count() or 4) -> List[str]:
         matches = []
 
@@ -98,14 +90,29 @@ class GeoCrawler:
                         if ext in self.types:
                             files.append(str(Path(entry.path).resolve()))
                     elif entry.is_dir(follow_symlinks=False):
-                        subdir = Path(entry.path)
-                        files.extend(crawl_dir(subdir))  # serial for now
-            except (PermissionError, FileNotFoundError):
-                pass
+                        files.extend(crawl_dir(Path(entry.path)))  # still recursive here
+            except (PermissionError, FileNotFoundError) as e:
+                logger.debug(f"Skipped directory {path} due to error: {e}")
             return files
 
+        try:
+            # Collect matches in the top-level directory
+            for entry in os.scandir(self.path):
+                if entry.is_file():
+                    ext = Path(entry.name).suffix[1:].lower()
+                    if ext in self.types:
+                        matches.append(str(Path(entry.path).resolve()))
+        except Exception as e:
+            logger.warning(f"Failed to scan root directory {self.path}: {e}")
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [executor.submit(crawl_dir, self.path)]
+            # Submit all top-level subdirectories for crawling
+            futures = [
+                executor.submit(crawl_dir, Path(entry.path))
+                for entry in os.scandir(self.path)
+                if entry.is_dir(follow_symlinks=False)
+            ]
+
             for f in concurrent.futures.as_completed(futures):
                 try:
                     matches.extend(f.result())
@@ -116,212 +123,95 @@ class GeoCrawler:
 
 
 class GeoIndexer:
-    def __init__(self, file_list: List[str]):
-        self.file_list = file_list
-        self.errors: List[str] = []
-        self.failures = {
-            "files": [],
-            "layers": []
-        }
+    def __init__(
+        self, input_dir: str,
+        output_gpkg: str,
+        convex_hull: bool = False,
+        scaled_output: bool = False
+    ):
+        self.input_dir = Path(input_dir)
+        self.matches = None
+        self.output_gpkg = Path(output_gpkg)
+        self.convex_hull = convex_hull
+        self.scaled_output = scaled_output
+        self.accumulated_features = []
 
-    @staticmethod
-    def get_extension(filepath: str) -> Optional[str]:
-        return Path(filepath).suffix.lower()[1:] if filepath else None
+    def index(self):
+        """
+        Kicks off GeoCrawler, iterates through matches, processing coverages as
+        either simple extents (default) or convex hulls (optional) for each file
+        (shapefile, raster) or layer (feature class, db table).
 
-    def get_layer_num(self, filepath: str) -> int:
-        """Returns number of layers in a container, or 1 for non-container files."""
-        ext = self.get_extension(filepath)
-        if ext in {"gdb", "gpkg", "db", "sqlite"}:
+        Writes results to an output GeoPackage as a single layer (default) or
+        broken into a number of scaled layers (00 - 07)
+        """
+        self.matches = GeoCrawler(self.input_dir, list(PROCESSOR_MAP.keys())).files
+        for i in self.matches:
+            ext = Path(i).suffix.lower()[1:]
+            processor_cls = PROCESSOR_MAP.get(ext)
+
+            if not processor_cls:
+                continue
+
             try:
-                return len(fiona.listlayers(filepath))
-            except Exception as e:
-                self.errors.append(f"{now()} - {e} - [{filepath}]")
-                return 0
-        return 1
+                if processor_cls is Shapefile:
+                    handler = processor_cls(i)
+                    props = handler.get_props()
+                    if props and "geometry" in props:
+                        self.accumulated_features.append(props)
 
-    @staticmethod
-    def geojson_container() -> dict:
-        return {
-            "type": "FeatureCollection",
-            "features": []
-        }
+                elif processor_cls is Container:
+                    handler = processor_cls(i, convex_hull=self.convex_hull)
+                    results = handler.get_props()
+                    if results and "feats" in results:
+                        for feature in results["feats"]:
+                            if "geometry" in feature:
+                                self.accumulated_features.append(feature)
 
-    @staticmethod
-    def get_schema(img_popup: bool = False) -> dict:
-        if img_popup:
-            return {
-                "geometry": "Point",
-                "properties": OrderedDict([
-                    ("dataType", "str"),
-                    ("fname", "str"),
-                    ("path", "str"),
-                    ("img_popup", "str"),
-                    ("native_crs", "int"),
-                    ("lastmod", "str")
-                ])
-            }
-        return {
-            "geometry": "Polygon",
-            "properties": OrderedDict([
-                ("path", "str"),
-                ("lastmod", "str"),
-                ("fname", "str"),
-                ("dataType", "str"),
-                ("native_crs", "int")
-            ])
-        }
-    
-    def _process_file(
-        self,
-        filepath: str,
-        polygons: List[dict],
-        points: List[dict],
-        stats: dict
-    ) -> None:
-        ext = self.get_extension(filepath)
-        processor_cls = PROCESSOR_MAP.get(ext)
+                elif processor_cls is Raster:
+                    handler = processor_cls(i)
+                    props = handler.get_props()
+                    if props and "geometry" in props:
+                        if "native_crs" not in props:
+                            props["native_crs"] = 4326
+                        self.accumulated_features.append(props)
 
-        if not processor_cls:
-            return
-
-        try:
-            result = processor_cls(filepath).get_props()
-
-            if not result:
-                raise ValueError("Processor returned None")
-
-            if isinstance(result, dict) and result.get("geometry", {}).get("type") == "Point":
-                points.append(result)
-            else:
-                if ext in {"gdb", "gpkg", "db", "sqlite"} and "feats" in result:
-                    polygons.extend(result["feats"])
-                    stats["container_layers"] += len(result["feats"])
-                    if result.get("errors"):
-                        self.errors.extend(result["errors"])
-                        self.failures["layers"].extend(result.get("failed_layers", []))
                 else:
-                    polygons.append(result)
-                    stats[self._stat_key(ext)] += 1
+                    # All other types (Exif, Lidar, other potential types) return single GeoJSON-like records
+                    handler = processor_cls(i)
+                    props = handler.get_props()
+                    if props and "geometry" in props:
+                        self.accumulated_features.append(props)
 
-        except Exception as e:
-            self.errors.append(f"{now()} - {e} - [{filepath}]")
-            self.failures["files"].append(filepath)
+            except Exception as e:
+                logger.warning(f"Failed to process {i}: {e}")
+                print("Error processing file:", i, "Error:", e)
 
-    @staticmethod
-    def _stat_key(ext: str) -> str:
-        return {
-            "jpg": "web_images",
-            "jpeg": "web_images",
-            "laz": "lidar_point_clouds",
-            "las": "lidar_point_clouds",
-            "tif": "rasters",
-            "tiff": "rasters",
-            "ntf": "rasters",
-            "nitf": "rasters",
-            "dt0": "rasters",
-            "dt1": "rasters",
-            "dt2": "rasters",
-            "shp": "shapefiles"
-        }.get(ext, "unknown")
-    
-    def get_extents(self, logging: Optional[str] = None):
-        if not self.file_list:
-            logger.warning("No files to process.")
-            return None
+        if self.accumulated_features:
+            if self.scaled_output:
+                write_features_by_scale(
+                    features=self.accumulated_features,
+                    output_gpkg_path=str(self.output_gpkg)
+                )
+            else:
+                write_features_to_gpkg(
+                    features=self.accumulated_features,
+                    output_gpkg=str(self.output_gpkg)
+                )
 
-        # Estimate total datasets (includes container sublayers)
-        total_datasets = sum(self.get_layer_num(f) for f in self.file_list)
 
-        # Setup
-        polygons, points = [], []
-        extents = self.geojson_container()
-        stats = {
-            "container_layers": 0,
-            "web_images": 0,
-            "lidar_point_clouds": 0,
-            "rasters": 0,
-            "shapefiles": 0
-        }
+if __name__ == "__main__":
 
-        for f in tqdm(self.file_list, desc="GeoIndexer progress", dynamic_ncols=True):
-            self._process_file(f, polygons, points, stats)
-
-        extents["features"].extend(polygons + points)
-
-        stats["total_processed"] = sum(stats.values())
-        stats["total_datasets"] = total_datasets
-        stats["success_rate"] = round(
-            (stats["total_processed"] / total_datasets * 100.0), 2
-        ) if total_datasets else 0.0
-
-        if logging:
-            log = Log(self.errors)
-            logname = log.to_file(logging)
-            stats["logfile"] = f"file:///{Path(logging, logname).as_posix()}"
-
-        return extents, stats, self.failures
-    
-    @staticmethod
-    def to_geopackage(features: dict, output_path: str, scoped: bool = True) -> bool:
-        """
-        Writes features to a GeoPackage file, split into size-based layers if scoped is True.
-        """
-        def layer_name_for_area(km2: float) -> str:
-            if km2 >= 175_000_000: return "level_00"
-            elif km2 >= 35_000_000: return "level_01"
-            elif km2 >= 5_000_000: return "level_02"
-            elif km2 >= 1_000_000: return "level_03"
-            elif km2 >= 500_000: return "level_04"
-            elif km2 >= 100_000: return "level_05"
-            elif km2 >= 50_000: return "level_06"
-            return "level_07"
-
-        driver = "GPKG"
-
-        if scoped:
-            layers = {f"level_0{i}": GeoIndexer.geojson_container() for i in range(7)}
-            for feat in features["features"]:
-                try:
-                    from area import area
-                    area_km2 = area(feat["geometry"]) / 1_000_000
-                    layer = layer_name_for_area(area_km2)
-                    layers[layer]["features"].append(feat)
-                except Exception:
-                    continue
-
-            for layer, collection in layers.items():
-                if collection["features"]:
-                    with fiona.open(
-                        output_path, 'w',
-                        schema=GeoIndexer.get_schema(),
-                        driver=driver,
-                        crs=CRS.from_epsg(4326),
-                        layer=layer
-                    ) as out:
-                        out.writerecords(collection["features"])
-            return True
-
-        else:
-            layer_name = f"coverages_{now(False)}"
-            with fiona.open(
-                output_path, 'w',
-                schema=GeoIndexer.get_schema(),
-                driver=driver,
-                crs=CRS.from_epsg(4326),
-                layer=layer_name
-            ) as out:
-                out.writerecords(features["features"])
-            return True
+    def testrunner(input_path, output_path):
+        outname = f"geoindexer_run_{now()}.gpkg"
+        output_gpkg = Path(output_path) / outname
+        gi = GeoIndexer(input_path, output_gpkg, convex_hull=True)
+        print('*' * 120)
+        print('START GEOINDEXING...')
+        print('*' * 120)
+        return gi.index()
         
-    @staticmethod
-    def to_geojson(features: dict, output_path: str) -> bool:
-        """
-        Writes the entire FeatureCollection to a single GeoJSON file.
-        """
-        try:
-            with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(features, f, indent=2)
-            return True
-        except Exception as e:
-            logger.warning(f"Failed to write GeoJSON to {output_path}: {e}")
-            return False
+
+    p = "/Users/eagle/GIS/data"
+    o = f"/Users/eagle/GIS/"
+    testrunner(p, o)
