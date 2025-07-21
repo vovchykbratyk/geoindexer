@@ -211,7 +211,3 @@ if __name__ == "__main__":
         print('*' * 120)
         return gi.index()
         
-
-    p = "/Users/eagle/GIS/data"
-    o = f"/Users/eagle/GIS/"
-    testrunner(p, o)
