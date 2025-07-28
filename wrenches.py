@@ -164,7 +164,7 @@ def write_features_by_scale(features: list[dict], output_gpkg_path: str) -> None
             "w" if not Path(output_gpkg_path).exists() else "a",
             driver="GPKG",
             schema=schema,
-            crs=from_epsg(4326),
+            crs=fiona_crs.from_epsg(4326),
             layer=layer
         ) as sink:
             sink.writerecords(data["features"])
