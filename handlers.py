@@ -6,7 +6,7 @@ import logging
 
 import fiona
 from fiona import open as fiona_open
-from fiona.crs import from_epsg
+from fiona.crs import CRS
 import rasterio
 from pyproj import CRS as PyCRS
 from PIL import Image
@@ -194,7 +194,7 @@ class Lidar:
                 logger.warning(f"No CRS found in PDAL metadata for {self.lidar_file}")
                 return None
 
-            crs_json = json.loads(CRS.from_wkt(crs_wkt).to_json())
+            crs_json = json.loads(CRS.from_wkt(crs_wkt).to_json())  # doublecheck from_wkt() call
             native_crs = crs_json['components'][0]['id']['code']
             if native_crs != 4326:
                 minx, miny, maxx, maxy = to_wgs84(native_crs, bounds)
