@@ -16,8 +16,6 @@ from osgeo import gdal, ogr
 
 from wrenches import (
     get_geometry,
-    write_features_by_scale,
-    write_features_to_gpkg,
     moddate,
     to_wgs84,
     dms_to_dd,
@@ -31,11 +29,11 @@ logger = logging.getLogger(__name__)
 
 
 class Container:
-    def __init__(self, container_path: str, convex_hull: bool = False):
+    def __init__(self, container_path: str, minimum_bounding_geometry: bool = False):
         self.container = container_path
         self.layer_errors = []
         self.failed_layers = []
-        self.convex_hull = convex_hull
+        self.mbg = minimum_bounding_geometry
 
     def get_props(self) -> dict:
         ext = Path(self.container).suffix.lower()[1:]
@@ -52,7 +50,7 @@ class Container:
                 try:
                     geom, crs = get_geometry(
                         self.container,
-                        convex_hull=self.convex_hull,
+                        minimum_bounding_geometry=self.mbg,
                         layer=layer_name
                     )
                     if not geom or not crs:

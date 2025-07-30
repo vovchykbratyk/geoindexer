@@ -60,7 +60,7 @@ def _openkmz(kmz_path: str) -> str:
 
 
 # Shared utility functions
-def get_geometry(vector_path, convex_hull=False, layer=None):
+def get_geometry(vector_path, minimum_bounding_geometry=False, layer=None):
     """
     Reads geometry from an object and computes either a bounding box (default)
     or a convex hull (convex_hull=True) with fallback to minimum bounding geometry
@@ -82,7 +82,7 @@ def get_geometry(vector_path, convex_hull=False, layer=None):
 
             combined = unary_union(geometries)
 
-            if convex_hull:
+            if minimum_bounding_geometry:
                 hull = combined.convex_hull
                 if not isinstance(hull, Polygon):
                     geom = combined.envelope
