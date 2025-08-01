@@ -146,6 +146,18 @@ class GeoIndexer:
         broken into a number of scaled layers (00 - 07)
         """
         self.matches = GeoCrawler(self.input_dir, list(PROCESSOR_MAP.keys())).files
+
+        # Deal with files that have EXIF headers first
+        image_exts = {"jpg", "jpeg"}  
+        # .tif supports EXIF too, but excluding it here since most will be GeoTIFF
+        image_paths = [p for p in self.matches if Path(p).suffix.lower()[1:] in image_exts]
+
+        if image_paths:
+            logger.info(f"Processing {len(image_paths)} image files in parallel...")
+            exif_features = Exif.batch(image_paths)
+            self.accumulated_features.extend(exif_features)
+
+        # Other file types
         for i in self.matches:
             ext = Path(i).suffix.lower()[1:]
             processor_cls = PROCESSOR_MAP.get(ext)
@@ -177,7 +189,7 @@ class GeoIndexer:
                         self.accumulated_features.append(props)
 
                 else:
-                    # All other types (Exif, Lidar, other potential types) return single GeoJSON-like records
+                    # All other types including Lidar return single GeoJSON records
                     handler = processor_cls(i)
                     props = handler.get_props()
                     if props and "geometry" in props:
