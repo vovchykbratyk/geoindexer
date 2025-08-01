@@ -283,7 +283,6 @@ def dms_to_dd(coords: str) -> tuple[float, float]:
         return 0.0, 0.0
 
 
-
 def kmlextents(kmlfile: str) -> tuple | None:
     """Parses KML or KMZ file and extracts bounding box from coordinates."""
     data = ""
