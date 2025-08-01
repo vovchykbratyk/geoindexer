@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 import os
 import logging
+import sys
 
 from tqdm import tqdm
 
@@ -126,13 +127,13 @@ class GeoIndexer:
     def __init__(
         self, input_dir: str,
         output_gpkg: str,
-        convex_hull: bool = False,
+        minimum_bounding_geometry: bool = False,
         scaled_output: bool = False
     ):
         self.input_dir = Path(input_dir)
         self.matches = None
         self.output_gpkg = Path(output_gpkg)
-        self.convex_hull = convex_hull
+        self.mbg = minimum_bounding_geometry
         self.scaled_output = scaled_output
         self.accumulated_features = []
 
@@ -167,13 +168,13 @@ class GeoIndexer:
 
             try:
                 if processor_cls is Shapefile:
-                    handler = processor_cls(i)
+                    handler = processor_cls(i, minimum_bounding_geometry=self.mbg)
                     props = handler.get_props()
                     if props and "geometry" in props:
                         self.accumulated_features.append(props)
 
                 elif processor_cls is Container:
-                    handler = processor_cls(i, convex_hull=self.convex_hull)
+                    handler = processor_cls(i, minimum_bounding_geometry=self.mbg)
                     results = handler.get_props()
                     if results and "feats" in results:
                         for feature in results["feats"]:
@@ -212,14 +213,77 @@ class GeoIndexer:
                 )
 
 
+def configure_logging(debug: bool):
+    """Sets global logging level based on debug flag"""
+    level = logging.DEBUG if debug else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)]
+    )
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="GeoIndexer CLI: Find and index geospatial content and export metadata to GeoPackage"
+    )
+
+    parser.add_argument(
+        "input_path",
+        help="Path to the root directory to crawl for spatial data"
+    )
+
+    parser.add_argument(
+        "output_path",
+        help="Path to the folder where the output GeoPackage will be saved"
+    )
+
+    parser.add_argument(
+        "--mbg", action="store_true",
+        help="Use minimum bounding geometry instead of simple extents where possible"
+    )
+
+    parser.add_argument(
+        "--scaled", action="store_true",
+        help="Write features to multiple scaled output layers (00 - 07) in GeoPackage"
+    )
+
+    parser.add_argument(
+        "--debug", action="store_true",
+        help="Enable verbose debug logging and output"
+    )
+
+    args = parser.parse_args()
+    configure_logging(args.debug)
+
+    outname = f"geoindexer_run_{now()}.gpkg"
+    output_gpkg = Path(args.output_path) / outname
+
+    print("*" * 100)
+    print("Starting GeoIndexer with the following parameters:")
+    print(f"Input path: {args.input_path}")
+    print(f"Output GeoPackage: {output_gpkg}")
+    print(f"Minimum bounding geometry: {'Enabled' if args.mbg else 'Disabled'}")
+    print(f"Scaled output: {'Enabled' if args.scaled else 'Disabled'}")
+    print("*" * 100)
+
+    try:
+        indexer = GeoIndexer(
+            input_dir=args.input_path,
+            output_gpkg=str(output_gpkg),
+            minimum_bounding_geometry=args.mbg,
+            scaled_output=args.scaled
+        )
+
+        indexer.index()
+        print(f"GeoIndexer complete.  Output saved to {output_gpkg}")
+    except Exception as e:
+        logging.error(f"GeoIndexer failed: {e}")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
 
-    def testrunner(input_path, output_path):
-        outname = f"geoindexer_run_{now()}.gpkg"
-        output_gpkg = Path(output_path) / outname
-        gi = GeoIndexer(input_path, output_gpkg, convex_hull=True)
-        print('*' * 120)
-        print('START GEOINDEXING...')
-        print('*' * 120)
-        return gi.index()
-        
+    main()
