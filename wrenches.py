@@ -97,7 +97,7 @@ def get_geometry(vector_path, minimum_bounding_geometry=False, layer=None):
     """
     try:
         with fiona.open(vector_path, layer=layer) if layer else fiona.open(vector_path) as src:
-            crs = src.crs_wkt or src.crs
+            crs_input = src.crs_wkt or src.crs
             geometries = [
                 shape(feat["geometry"])
                 for feat in src
@@ -117,8 +117,14 @@ def get_geometry(vector_path, minimum_bounding_geometry=False, layer=None):
                     geom = hull
             else:
                 geom = combined.envelope
-            epsg = PyCRS.from_user_input(crs).to_epsg() or 4326
-            return geom, epsg
+
+            try:
+                epsg_code = PyCRS.from_user_input(crs_input).to_epsg() or 4326
+            except Exception as e:
+                logger.debug(f"Failed to extract EPSG from CRS in {vector_path}: {e}")
+
+            return geom, epsg_code
+        
     except Exception as e:
         print(f"Error processing {vector_path}: {e}")
         return None, None
