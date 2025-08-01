@@ -3,7 +3,7 @@ from datetime import datetime
 import logging
 from pathlib import Path
 import re
-from typing import List
+from typing import Any, List
 import uuid
 from zipfile import ZipFile
 
@@ -120,12 +120,9 @@ def write_features_by_scale(features: list[dict], output_gpkg_path: str) -> None
             geom = shape(feat["geometry"])
             geom_type = geom.geom_type
             native_crs = feat.get("native_crs", 4326)
-            crs_in = PyCRS.from_user_input(native_crs)
-            epsg_code = crs_in.to_epsg()
+            epsg_code = PyCRS.from_user_input(native_crs).to_epsg()
 
-            if epsg_code != 4326:
-                transformer = Transformer.from_crs(crs_in, PyCRS.from_epsg(4326), always_xy=True)
-                geom = transform(transformer.transform, geom)
+            geom = to_wgs84(native_epsg=epsg_code, geom_or_bounds=geom)
 
             # figure out target layer
             if geom_type in {"Polygon", "MultiPolygon"}:
