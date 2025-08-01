@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 import subprocess as sp
@@ -102,16 +103,17 @@ class Container:
 class Exif:
     def __init__(self, img_path: str):
         self.img_path = img_path
-        self.image = Image.open(img_path)
-        self.exif_data = self._extract_exif()
         self.datatype = "JPEG Image"
+        self.exif_data = None
 
     def _extract_exif(self) -> dict:
         """Extract and decode EXIF data, including GPS tags if available."""
         data = {}
         try:
-            raw = self.image._getexif()
-            if raw:
+            with Image.open(self.img_path) as img:
+                raw = img._getexif()
+                if not raw:
+                    return {}
                 for tag, value in raw.items():
                     name = TAGS.get(tag, tag)
                     if name == "GPSInfo":
@@ -122,27 +124,54 @@ class Exif:
         except Exception as e:
             logger.debug(f"EXIF read failed for {self.img_path}: {e}")
         return data
+    
 
-    def _convert_to_degrees(self, dms) -> float | None:
+    @staticmethod
+    def _convert_to_degrees(dms: tuple) -> float | None:
         try:
             return dms[0] + dms[1] / 60.0 + dms[2] / 3600.0
         except (TypeError, IndexError, ZeroDivisionError):
             return None
+        
+    @staticmethod
+    def batch(image_paths: list[str], max_workers: int = 8) -> list[dict]:
+        """
+        Threaded EXIF extractor for a list of images. Returns GeoJSON records
+        (point) for images with GPS data.
+        """
+        def worker(img_path: str) -> dict | None:
+            try:
+                props = Exif(img_path).get_props()
+                if props and "geometry" in props:
+                    return props
+            except Exception as e:
+                logger.debug(f"Threaded EXIF processing failed: {e}")
+            return None
+        
+        results = []
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(worker, p): p for p in image_paths}
+            for f in as_completed(futures):
+                result = f.result()
+                if result:
+                    results.append(result)
+        return results
 
     def get_props(self) -> dict | None:
         """Returns a GeoJSON point from EXIF GPS coordinates, if present."""
         try:
+            self.exif_data = self.exif_data or self._extract_exif()
             gps = self.exif_data.get("GPSInfo")
             if not gps:
                 return None
 
             lat = self._convert_to_degrees(gps.get("GPSLatitude"))
-            if gps.get("GPSLatitudeRef") == "S":
-                lat = -lat if lat is not None else None
+            if gps.get("GPSLatitudeRef") == "S" and lat is not None:
+                lat = -lat
 
             lon = self._convert_to_degrees(gps.get("GPSLongitude"))
-            if gps.get("GPSLongitudeRef") == "W":
-                lon = -lon if lon is not None else None
+            if gps.get("GPSLongitudeRef") == "W" and lon is not None:
+                lon = -lon
 
             if lat is not None and lon is not None:
                 point = Point(lon, lat)
@@ -155,7 +184,7 @@ class Exif:
                     lastmod=moddate(self.img_path)
                 )
         except Exception as e:
-            logger.warning(f"Failed to extract GPS from {self.img_path}: {e}")
+            logger.debug(f"Failed to extract GPS from {self.img_path}: {e}")
             return None
 
 
@@ -290,51 +319,34 @@ class Raster:
 
 
 class Shapefile:
-    def __init__(self, shpfile: str):
+    def __init__(self, shpfile: str, minimum_bounding_geometry: bool = False):
+
         self.shp = shpfile
         self.datatype = "Shapefile"
+        self.mbg = minimum_bounding_geometry
 
     def get_props(self) -> dict | None:
-        """Returns a GeoJSON polygon bounding box for the shapefile extent."""
+        """Returns a GeoJSON polygon bounding box or hull for shapefile data"""
         try:
-            driver = ogr.GetDriverByName("ESRI Shapefile")
-            sf = driver.Open(self.shp, 0)
-            if sf is None:
-                logger.warning(f"OGR could not open shapefile: {self.shp}")
+            geom, epsg = get_geometry(
+                self.shp,
+                minimum_bounding_geometry=self.mbg
+            )
+            if not geom or not epsg:
                 return None
-
-            lyr = sf.GetLayer()
-            extent = lyr.GetExtent()
-            sr = lyr.GetSpatialRef()
-
-            if sr and sr.IsProjected():
-                epsg_code = int(sr.GetAttrValue("AUTHORITY", 1))
-            else:
-                epsg_code = 4326  # default to WGS84 if unknown
-
-            if epsg_code != 4326:
-                minx, maxx, miny, maxy = to_wgs84(epsg_code, extent)
-            else:
-                minx, maxx, miny, maxy = extent
-
-            polygon = Polygon([
-                [minx, miny], [maxx, miny],
-                [maxx, maxy], [minx, maxy]
-            ])
-
+            
             return get_geojson_record(
-                geom=polygon,
+                geom=geom,
                 datatype=self.datatype,
                 fname=Path(self.shp).name,
                 path=str(Path(self.shp).parent),
-                nativecrs=epsg_code,
+                nativecrs=epsg,
                 lastmod=moddate(self.shp)
             )
-
         except Exception as e:
-            logger.warning(f"Shapefile parsing failed for {self.shp}: {e}")
+            logger.warning(f"Shapefile processing failed for {self.shp}: {e}")
             return None
-        
+
 
 class Log:
     def __init__(self, lines: list[str]):
