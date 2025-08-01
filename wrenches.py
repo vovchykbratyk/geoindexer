@@ -194,18 +194,17 @@ def write_features_to_gpkg(
         "Polygon": [],
         "MultiPolygon": []
     }
+    transformer_cache = {}
 
     for feat in features:
         try:  # coerce to EPSG:4326 first
             geom = shape(feat["geometry"])
             geom_type = geom.geom_type
             native_crs = feat.get("native_crs", 4326)
-            crs_in = PyCRS.from_user_input(native_crs)
-            epsg_code = crs_in.to_epsg()
-            if epsg_code != 4326:
-                transformer = Transformer.from_crs(crs_in, PyCRS.from_epsg(4326), always_xy=True)
-                geom = transform(transformer.transform, geom)
+            epsg_code = PyCRS.from_user_input(native_crs).to_epsg()
 
+            geom = to_wgs84(native_epsg=epsg_code, geom_or_bounds=geom)
+            
             props = feat["properties"]
             props["uid"] = str(uuid.uuid4())
             props["native_crs"] = epsg_code or 0  # Unknown projection
@@ -218,7 +217,8 @@ def write_features_to_gpkg(
 
             if geom_type in lyr_types:
                 lyr_types[geom_type].append(cleaned)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Skipped feature due to error: {e}")
             continue  # Skip invalid geometry
 
     # Now write features out to their own appropriate GPKG layer
@@ -252,21 +252,32 @@ def moddate(filepath: str) -> str:
         return ""
 
 
-def to_wgs84(native_epsg, bounds) -> tuple:
-    """Reprojects bounding box (minx, miny, maxx, maxy) to WGS84 (EPSG:4326)."""
+def to_wgs84(native_epsg, geom_or_bounds) -> Any:
+    """
+    Reprojects a Shapely geometry or bounding box to WGS84 (EPSG:4326).
+    Returns Shapely geometry if input was geometry, or a tuple if
+    input was extent/bounds.
+    """
     try:
+        if native_epsg == 4326:
+            return geom_or_bounds
+        
         if native_epsg not in _transformer_cache:
             _transformer_cache[native_epsg] = Transformer.from_crs(
                 native_epsg, 4326, always_xy=True
             )
         transformer = _transformer_cache[native_epsg]
 
-        minx, miny = transformer.transform(bounds[0], bounds[1])
-        maxx, maxy = transformer.transform(bounds[2], bounds[3])
-        return minx, miny, maxx, maxy
+        if isinstance(geom_or_bounds, (tuple, list)):
+            minx, miny = transformer.transform(geom_or_bounds[0], geom_or_bounds[1])
+            maxx, maxy = transformer.transform(geom_or_bounds[2], geom_or_bounds[3])
+            return minx, miny, maxx, maxy
+        else:
+            return transform(transformer.transform, geom_or_bounds)
+        
     except Exception as e:
-        logger.warning(f"Reprojection failed for EPSG:{native_epsg}, bounds {bounds}: {e}")
-        return bounds  # Fallback to original bounds
+        logger.warning(f"Reprojection failed for EPSG:{native_epsg}: {e}")
+        return geom_or_bounds  # Fallback to original bounds
 
 
 def dms_to_dd(coords: str) -> tuple[float, float]:
