@@ -10,12 +10,9 @@ from zipfile import ZipFile
 import fiona
 from fiona import open as fiona_open
 from fiona.crs import CRS as fiona_crs
-#from fiona.crs import from_epsg
-import rasterio
 from pyproj import CRS as PyCRS, Transformer
 from shapely.geometry import box, mapping, shape, Point, Polygon
 from shapely.ops import unary_union, transform
-from osgeo import gdal, ogr
 
 from area import area
 
@@ -63,8 +60,9 @@ def _openkmz(kmz_path: str) -> str:
 def get_geometry(vector_path, minimum_bounding_geometry=False, layer=None):
     """
     Reads geometry from an object and computes either a bounding box (default)
-    or a convex hull (convex_hull=True) with fallback to minimum bounding geometry
-    if convex hull fails
+    or a minimum bounding geometry (minimum_bounding_geometry=True).  Minimum
+    bounding geometry attempts to return a convex hull with fallback to an
+    envelope.
 
     Returns: (Shapely geometry, CRS as WKT string or dict)
     """
@@ -153,21 +151,27 @@ def write_features_by_scale(features: list[dict], output_gpkg_path: str) -> None
                     "native_crs": epsg_code or 0
                 }
             })
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Failed to process feature for scaled layer: {e}")
             continue
-
+    
+    # Now write them all out
     for layer, data in layer_bins.items():
-        schema = _get_standard_schema(geom_type=geom_type)
+        try:
+            geom_type = data["geometry"]
+            schema = _get_standard_schema(geom_type=geom_type)
 
-        with fiona_open(
-            output_gpkg_path,
-            "w" if not Path(output_gpkg_path).exists() else "a",
-            driver="GPKG",
-            schema=schema,
-            crs=fiona_crs.from_epsg(4326),
-            layer=layer
-        ) as sink:
-            sink.writerecords(data["features"])
+            with fiona_open(
+                output_gpkg_path,
+                "w" if not Path(output_gpkg_path).exists() else "a",
+                driver="GPKG",
+                schema=schema,
+                crs=fiona_crs.from_epsg(4326),
+                layer=layer
+            ) as sink:
+                sink.writerecords(data["features"])
+        except Exception as e:
+            logger.warning(f"Failed to write layer '{layer}' to {output_gpkg_path}: {e}")
 
 
 def write_features_to_gpkg(
@@ -190,10 +194,6 @@ def write_features_to_gpkg(
     }
 
     for feat in features:
-        print("*" * 100)
-        print("====FEAT CONTENT====")
-        print(feat)
-        print("=====END FEAT CONTENT====")
         try:  # coerce to EPSG:4326 first
             geom = shape(feat["geometry"])
             geom_type = geom.geom_type
