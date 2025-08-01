@@ -20,6 +20,8 @@ from area import area
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+_transformer_cache = {}  # stash transformers here to avoid recreation
+
 
 # Internal functions
 def _get_standard_schema(geom_type: str) -> dict:
@@ -253,13 +255,18 @@ def moddate(filepath: str) -> str:
 def to_wgs84(native_epsg, bounds) -> tuple:
     """Reprojects bounding box (minx, miny, maxx, maxy) to WGS84 (EPSG:4326)."""
     try:
-        transformer = Transformer.from_crs(native_epsg, 4326, always_xy=True)
+        if native_epsg not in _transformer_cache:
+            _transformer_cache[native_epsg] = Transformer.from_crs(
+                native_epsg, 4326, always_xy=True
+            )
+        transformer = _transformer_cache[native_epsg]
+
         minx, miny = transformer.transform(bounds[0], bounds[1])
         maxx, maxy = transformer.transform(bounds[2], bounds[3])
         return minx, miny, maxx, maxy
     except Exception as e:
         logger.warning(f"Reprojection failed for EPSG:{native_epsg}, bounds {bounds}: {e}")
-        return bounds  # Fall back to original bounds
+        return bounds  # Fallback to original bounds
 
 
 def dms_to_dd(coords: str) -> tuple[float, float]:
