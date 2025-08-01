@@ -58,6 +58,33 @@ def _openkmz(kmz_path: str) -> str:
     return ""
 
 
+def batch_write_to_gpkg(
+    output_path: str,
+    schema: dict,
+    crs: Any,
+    layer: str,
+    features: list[dict],
+    mode: str= "a",
+    batch_size: int = 1000
+):
+    """
+    Writes feats to a GPKG layer in batches to avoid memory overload
+    """
+    try:
+        with fiona_open(
+            output_path,
+            mode,
+            driver="GPKG",
+            schema=schema,
+            crs=crs,
+            layer=layer
+        ) as sink:
+            for i in range(0, len(features), batch_size):
+                batch = features[i:i + batch_size]
+                sink.writerecords(batch)
+    except Exception as e:
+        logger.warning(f"Failed to batch-write layer '{layer}' to {output_path}: {e}")
+
 # Shared utility functions
 def get_geometry(vector_path, minimum_bounding_geometry=False, layer=None):
     """
@@ -159,16 +186,15 @@ def write_features_by_scale(features: list[dict], output_gpkg_path: str) -> None
         try:
             geom_type = data["geometry"]
             schema = _get_standard_schema(geom_type=geom_type)
-
-            with fiona_open(
-                output_gpkg_path,
-                "w" if not Path(output_gpkg_path).exists() else "a",
-                driver="GPKG",
+            mode = "w" if not Path(output_gpkg_path).exists() else "a"
+            batch_write_to_gpkg(
+                output_path=output_gpkg_path,
                 schema=schema,
                 crs=fiona_crs.from_epsg(4326),
-                layer=layer
-            ) as sink:
-                sink.writerecords(data["features"])
+                layer=layer,
+                features=data["features"],
+                mode=mode
+            )
         except Exception as e:
             logger.warning(f"Failed to write layer '{layer}' to {output_gpkg_path}: {e}")
 
@@ -227,16 +253,15 @@ def write_features_to_gpkg(
         lyr_name_out = f"{layer_name}_{lyr_suffix}"
 
         schema = _get_standard_schema(geom_type=geom_type)
-
-        with fiona_open(
-            output_gpkg,
-            "w" if not Path(output_gpkg).exists() else "a",  # append after first write
-            driver="GPKG",
+        mode = "w" if not Path(output_gpkg).exists() else "a"
+        batch_write_to_gpkg(
+            output_path=output_gpkg,
             schema=schema,
             crs=fiona_crs.from_epsg(4326),
-            layer=lyr_name_out
-        ) as sink:
-            sink.writerecords(feats)
+            layer=lyr_name_out,
+            features=feats,
+            mode=mode
+        )
 
 
 def moddate(filepath: str) -> str:
