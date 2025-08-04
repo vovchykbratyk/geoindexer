@@ -1,0 +1,21 @@
+name: geoindexer-env
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python >=3.9
+  - pdal
+  - fiona
+  - rasterio
+  - shapely
+  - pyproj
+  - gdal
+  - tqdm
+  - exifread
+  - pillow
+  - numpy
+  - pip
+  - pip:
+      - .
+
