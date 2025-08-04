@@ -175,7 +175,8 @@ class GeoIndexer:
             self.accumulated_features.extend(exif_features)
 
         # Other file types
-        for i in self.matches:
+        non_image_matches = [p for p in self.matches if Path(p).suffix.lower()[1:] not in image_exts]
+        for i in tqdm(non_image_matches, desc="Processing files", unit="file"):
             ext = Path(i).suffix.lower()[1:]
             processor_cls = PROCESSOR_MAP.get(ext)
 
