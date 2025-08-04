@@ -1,0 +1,1 @@
+This software is licensed under AGPLv3 to ensure it remains free and open-source.  Redistribution for profit without contributing back is discouraged and goes against the spirit of this project.
