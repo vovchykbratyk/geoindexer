@@ -1,0 +1,39 @@
+package:
+  name: geoindexer
+  version: "0.1.0"
+
+source:
+  path: ..
+
+build:
+  noarch: python
+  script: python -m pip install .
+
+requirements:
+  host:
+    - python >=3.9
+    - pip
+  run:
+    - python >=3.9
+    - pdal
+    - fiona
+    - rasterio
+    - shapely
+    - pyproj
+    - gdal
+    - tqdm
+    - exifread
+    - pillow
+    - numpy
+
+test:
+  imports:
+    - geoindexer
+  commands:
+    - python -m geoindexer --help
+
+about:
+  home: https://github.com/vovchykbratyk/geoindexer
+  license: AGPL-3.0
+  license_file: LICENSE
+  summary: "A tool for locating and indexing geospatial data."
